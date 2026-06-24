@@ -33,8 +33,9 @@ for each step (Rust owns the cursor + history):
 Rust owns all orchestration state; every LLM call is a stateless `opencode run`
 with the needed context passed in the prompt. Structured hand-offs use
 sentinel-delimited JSON that the harness extracts robustly. See
-[docs/orchestrator.md](docs/orchestrator.md) for the full design and
-[docs/poc-summary.md](docs/poc-summary.md) for an annotated end-to-end run.
+[docs/orchestrator.md](docs/orchestrator.md) for the full design and the
+annotated end-to-end runs ([macOS](docs/mac-poc-summary.md) ·
+[Arch/NVIDIA](docs/arch-poc-summary.md)).
 
 ## Prerequisites
 
@@ -104,7 +105,9 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/plan.md](docs/plan.md) — roadmap and current status
 - [docs/usage.md](docs/usage.md) — build and run instructions
 - [docs/config/](docs/config/README.md) — local model setup: `llama-server` + `opencode.json`, compatibility matrix, macOS & Arch/NVIDIA
-- [docs/poc-summary.md](docs/poc-summary.md) — annotated end-to-end proof-of-concept run
+- [docs/mac-poc-summary.md](docs/mac-poc-summary.md) — annotated end-to-end proof-of-concept run (macOS / Apple Silicon)
+- [docs/arch-poc-summary.md](docs/arch-poc-summary.md) — annotated end-to-end proof-of-concept run (Arch Linux / NVIDIA)
+- [docs/performance-analysis.md](docs/performance-analysis.md) — throughput benchmarks and RTX 3090 vs M1 Max analysis
 
 ## License
 
