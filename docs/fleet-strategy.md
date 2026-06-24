@@ -108,6 +108,84 @@ the slow, brittle path. Dedicate the box to **Debian stable / Ubuntu LTS** with
 packaged legacy driver + CUDA against a supported kernel. OS choice makes the K80
 *maintainable*; it does not make it *fast* (still split memory, no DP4A).
 
+## Node inventory & assembly (a worked example)
+
+A concrete fleet, to show how the tiers map to real silicon. **All tok/s figures
+are estimates** (decode bandwidth-scaled from the measured 3090; prefill relative;
+quant-fit approximate) — confirm each node with the "Measure first" recipe.
+
+### The fit rule for modern <24 GB GPUs
+
+None of the modern cards below hold the full 18.9 GB IQ4_XS. They're still the
+*best* nodes (tensor cores → fast prefill), so make them fit:
+
+- **16 GB (A2, RTX 5060 Ti):** run **Qwable at IQ3 (~14 GB) fully offloaded.** For
+  a 34B-MoE, IQ3 ≈ IQ4 quality — usually an acceptable trade. → Tier 1.
+- **12 GB (RTX 3060-12):** IQ3 + KV is too tight; run a **strong smaller model**
+  (e.g. a 14B coder ≈ 9 GB) for medium goals instead of crushing Qwable to IQ2.
+- **6 GB (laptop RTX 3060):** Qwable is out; run a **7B coder** for light goals, or
+  use the box as the **dispatcher/control node**.
+
+> **VRAM capacity is a trap, restated:** a 16 GB modern card with a fitted IQ3
+> beats any old 24 GB Tesla on speed *and* tokens/watt.
+
+### CPUs (decode = one instance unless "agg"; prefill capped — none have AMX)
+
+| CPU (config) | Cores/Thr | ISA | Mem/socket | Peak BW | Decode | Role |
+|---|---|---|---|---|---|---|
+| 1× Gold 5315Y (Ice Lake) | 8C/16T | AVX-512 | 8ch DDR4-2933 | ~188 GB/s | ~32–44 | **CPU decode star** / GPU host |
+| 1× Gold 6230 (Cascade) | 20C/40T | AVX-512 | 6ch DDR4-2933 | ~141 GB/s | ~26–36 | best CPU prefill / host |
+| 2× E5-2680 v4 (Broadwell) | 28C/56T | AVX2 | 4ch DDR4-2400 | ~154 agg | ~32–44 agg (2 inst) | best dual filler |
+| 2× E5-2698 v3 (Haswell) | 32C/64T | AVX2 | 4ch DDR4-2133 | ~137 agg | ~28–40 agg (2 inst) | cheap-power filler |
+| 2× E5-2680 v3 (Haswell) | 24C/48T | AVX2 | 4ch DDR4-2133 | ~137 agg | ~28–40 agg (2 inst) | cheap-power filler |
+| 1× E5-2697 v4 (Broadwell) | 18C/36T | AVX2 | 4ch DDR4-2400 | ~77 GB/s | ~16–22 | mid single-agent |
+| 1× W-2135 (Skylake-W) | 6C/12T | AVX-512 | 4ch DDR4-2666 | ~85 GB/s | ~17–24 | light node / **dispatcher host** |
+| 4× E5-4617 v1 → 4657L v2 | 24→48C | **AVX only** | 4ch DDR3 | ~60/socket | slow (AVX1, 4-way NUMA) | **bottom tier — skip unless power is free** |
+| Ryzen 5 1600 (Zen1, 64 GB) | 6C/12T | AVX2 | **2ch** DDR4-2666 | ~42 GB/s | ~8–12 | memory-starved → **use as GPU host** |
+| Ryzen 9 5900HX (Zen3 laptop) | 8C/16T | AVX2 | 2ch DDR4-3200 | ~51 GB/s | ~10–14 | **dispatcher / small-model host** |
+
+Rules: **one instance per socket, NUMA-pinned** (`numactl`); **fill all memory
+channels**; the Golds are the only CPUs worth running on expensive power; the quad
+Sandy/Ivy box is AVX-only and the worst $/feature here. Upgrading the Ryzen CPU
+won't raise decode (dual-channel is the wall) — spend on its GPU instead.
+
+### Modern GPUs (assume model/quant fits and runs fully on-GPU)
+
+| GPU | Arch | VRAM / BW | Fit | Decode | Prefill | Power | Efficiency |
+|---|---|---|---|---|---|---|---|
+| A2-16G | Ampere | 16 GB / ~200 GB/s | Qwable IQ3 | ~34 | good | **40–60 W** | **≈ M1 Max class** |
+| RTX 5060 Ti-16G | Blackwell | 16 GB / ~448 GB/s | Qwable IQ3 | **~76** | **excellent** | ~180 W | high |
+| RTX 3060-12G | Ampere | 12 GB / ~360 GB/s | 14B model | ~61 | strong | ~170 W | good |
+| RTX 3060-6G (laptop) | Ampere | 6 GB / ~336 GB/s | 7B model | (7B) fast | strong | 60–115 W | good |
+| RTX 3090 | Ampere | 24 GB / 936 GB/s | **Qwable IQ4 (measured)** | **158** | ~3,605 | 350 W | good when saturated |
+
+### Chassis constraint → fixed pairings
+
+Rack servers and workstations are **not interchangeable** (fanless enterprise
+cards need server airflow; consumer cards need workstation slots/power/airflow), so
+node assembly is partly physical:
+
+- **Rack servers (Golds, rack E5s) ⟷ fanless enterprise GPUs (A2, Teslas).**
+  → e.g. **Gold 5315Y + A2-16G**: Qwable IQ3 on the A2 (~34 tok/s @ ~60 W); fall
+  back to full IQ4 on the 188 GB/s CPU when a goal needs max quality.
+- **Workstation Xeons ⟷ consumer GPUs (3060-12, 5060 Ti-16).**
+  → best single node: **workstation Xeon + RTX 5060 Ti-16G** (Qwable IQ3, ~76 tok/s).
+- **Ryzen tower ⟷ consumer GPU** (R5-1600 + 3060-12 or 5060 Ti; CPU barely matters).
+- **5900HX laptop:** dispatcher/control plane, or 7B on its 6 GB GPU.
+
+Treat each `(chassis + CPU + GPU)` as a fixed node with measured tags — the
+scheduler can't move the A2 into a workstation or a 3060 into a 1U.
+
+### Efficiency ranking (tokens/joule)
+
+**M1 Max ≈ A2-16G > 5060 Ti-16G > 3060-12G > 3090 (saturated) > Gold CPUs > old
+Teslas / Haswell CPUs > quad Sandy/Ivy.**
+
+So the modern GPU nodes (A2 in rack, 5060 Ti / 3060 in workstations) are Tier 1 and
+should carry the bulk of overnight work at IQ3; the Golds are strong Tier-3
+CPU/host nodes and the full-quality fallback; the Haswell/quad boxes are
+power-expensive fillers; the laptop is the dispatcher.
+
 ## Scheduling: route by prefill load, model, deadline
 
 "Complex on better, simple on weaker" is the right shape; sharpen it:
