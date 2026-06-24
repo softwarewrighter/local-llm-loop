@@ -9,7 +9,9 @@ overview and [orchestrator.md](orchestrator.md) for the design.
 - The `opencode` CLI on your `$PATH`.
 - A model reachable by opencode. The defaults target a local `llama-server`
   (OpenAI-compatible endpoint) configured in `opencode.json` as the
-  provider/model `llamacpp/qwable`.
+  provider/model `llamacpp/qwable`. See [config/](config/README.md) for
+  ready-to-use server/opencode configs (macOS & Arch/NVIDIA) and the settings
+  that must match between them.
 
 ## Building
 

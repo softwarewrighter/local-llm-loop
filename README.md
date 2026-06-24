@@ -42,7 +42,9 @@ sentinel-delimited JSON that the harness extracts robustly. See
 - The `opencode` CLI on your `$PATH`.
 - A model reachable by opencode. The defaults target a local `llama-server`
   exposing an OpenAI-compatible endpoint, configured in `opencode.json` as the
-  provider/model `llamacpp/qwable`.
+  provider/model `llamacpp/qwable`. Ready-to-use server and opencode configs for
+  macOS and Arch/NVIDIA, plus the compatibility matrix, are in
+  [docs/config/](docs/config/README.md).
 
 ## Build
 
@@ -101,6 +103,7 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/prd.md](docs/prd.md) — product requirements
 - [docs/plan.md](docs/plan.md) — roadmap and current status
 - [docs/usage.md](docs/usage.md) — build and run instructions
+- [docs/config/](docs/config/README.md) — local model setup: `llama-server` + `opencode.json`, compatibility matrix, macOS & Arch/NVIDIA
 - [docs/poc-summary.md](docs/poc-summary.md) — annotated end-to-end proof-of-concept run
 
 ## License
