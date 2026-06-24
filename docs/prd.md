@@ -1,39 +1,60 @@
 # Product Requirements Document (PRD)
 
 ## Problem Statement
-Users need a simple, configurable tool to run the `opencode` CLI in a loop, with control over the model selection, number of iterations, and execution behavior.
+Turning a high-level idea into working code with a local LLM is tedious and
+error-prone: a single long generation drifts, lacks verification, and gives the
+operator no control points. Users need a harness that decomposes the work,
+implements it step by step, and *reviews* each step — pausing for a human only
+when something genuinely needs attention.
 
 ## Goals
-- Allow users to specify the model to use (default: `Qwable-v1 IQ4_XS`).
-- Support configurable iteration count.
-- Provide clear feedback on each iteration's success/failure.
-- Keep the tool easy to use via CLI arguments.
+- Take a short plain-text spec (goal + description + architectural decisions) and
+  drive it to a working, verified implementation with a local LLM.
+- Keep a human in control of the loop's *direction* without authoring code:
+  the supervising model can continue, insert, skip, or stop for intervention.
+- Make every decision inspectable and reproducible (persisted artifacts).
+- Run fully against a local model (no cloud dependency).
 
 ## User Stories
-1. As a user, I want to run `opencode` with a specific model for a set number of iterations.
-2. As a user, I want to override the default model via a command-line flag.
-3. As a user, I want to see the output of each iteration for debugging or logging purposes.
-4. As a user, I want the tool to handle errors gracefully and continue on failure.
+1. As a user, I want to hand the tool a spec file and get a designed, planned,
+   implemented project back.
+2. As a user, I want the tool to verify each step and adapt the plan when a step
+   reveals a gap, instead of blindly running a fixed list.
+3. As a user, I want it to stop and ask me when it can't confirm success, rather
+   than declare false success.
+4. As a user, I want to inspect the plan, each step's result, and each review
+   decision after the fact.
+5. As a power user, I want a lower-level mode to run an explicit list of tasks.
 
 ## Functional Requirements
-- Parse CLI arguments for model, iterations, and optional flags.
-- Default model to `Qwable-v1 IQ4_XS` if not specified.
-- Loop the specified number of times, invoking `opencode` each time.
-- Capture and display stdout/stderr from each invocation.
-- Exit with appropriate status code (0 for success, non-zero for fatal errors).
+- `orchestrate <spec>`: plan → execute → review loop (see
+  [orchestrator.md](orchestrator.md)).
+- `exec <tasks...>`: run an explicit task list, one `opencode run` per task,
+  optionally chained into one session.
+- Planner produces a serialized design + ordered step list.
+- Executor performs each step with tools and reports a structured result
+  (summary, new/changed files, changes, features, bugs, issues, status).
+- Reviewer returns one of: continue | insert | skip | stop.
+- Persist plan, per-step results, and per-step review decisions under
+  `<work-dir>/.bootstrap/`.
+- A `--max-steps` safety cap and a `--plan-only` dry-run mode.
 
 ## Non-Functional Requirements
-- **Performance**: Minimal overhead per iteration; no unnecessary allocations.
-- **Reliability**: Graceful handling of subprocess failures.
-- **Configurability**: All key parameters (model, iterations) should be adjustable via CLI.
-- **Simplicity**: Minimal dependencies; easy to build and deploy.
+- **Controllability**: Rust owns all loop state; LLM calls are stateless.
+- **Robustness**: tolerate malformed LLM output (extract JSON defensively; fail
+  safe to `stop` on an unparseable review).
+- **Reproducibility**: artifacts on disk for every decision.
+- **Simplicity / locality**: minimal dependencies; runs against a local model.
 
-## Out of Scope
-- GUI interface.
-- Persistent configuration files (planned for future).
-- Concurrent/parallel execution (planned for future).
+## Out of Scope (for now)
+- A GUI.
+- Distinct planner vs executor models (planned — see [plan.md](plan.md)).
+- Parallel/concurrent step execution.
+- Feeding human edits back into a paused loop to resume it.
 
 ## Success Metrics
-- Tool runs successfully with default settings for at least 10 iterations.
-- Users can override the model via CLI without errors.
-- Error rate per iteration is below 5% in typical usage.
+- From a small spec, the loop produces a project that builds and passes its own
+  tests, verified independently.
+- The reviewer demonstrably adapts the plan (insert/skip) and halts (stop) rather
+  than emitting false success. (Demonstrated — see [poc-summary.md](poc-summary.md).)
+- `unknown`-status steps (executor failed to report a structured result) are rare.

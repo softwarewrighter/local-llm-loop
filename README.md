@@ -95,13 +95,13 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 
 ## Documentation
 
-- [docs/orchestrator.md](docs/orchestrator.md) — architecture and control flow (current design)
+- [docs/orchestrator.md](docs/orchestrator.md) — control flow and rationale
+- [docs/architecture.md](docs/architecture.md) — components and data flow
+- [docs/design.md](docs/design.md) — CLI, JSON contracts, sentinels, artifacts
+- [docs/prd.md](docs/prd.md) — product requirements
+- [docs/plan.md](docs/plan.md) — roadmap and current status
+- [docs/usage.md](docs/usage.md) — build and run instructions
 - [docs/poc-summary.md](docs/poc-summary.md) — annotated end-to-end proof-of-concept run
-- [docs/usage.md](docs/usage.md) — usage notes
-
-> The `prd.md`, `architecture.md`, `design.md`, and `plan.md` files describe the
-> project's earlier "run opencode in a loop" iteration and are retained for
-> history; see `orchestrator.md` for the current design.
 
 ## License
 

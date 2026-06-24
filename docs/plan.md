@@ -1,26 +1,40 @@
-# Plan
+# Plan / Roadmap
 
-## Implementation Steps
-1. **Set up Rust project**: Initialize `cargo init`, add dependencies (`clap`, `anyhow`, `thiserror`).
-2. **CLI argument parsing**: Implement `clap` derive structs for model, iterations, and verbose flag.
-3. **Configuration**: Define `Config` struct and default values (model: `Qwable-v1 IQ4_XS`).
-4. **Loop controller**: Implement the loop logic that invokes `opencode` per iteration.
-5. **Opencode runner**: Create a function that constructs and executes the `opencode` command.
-6. **Error handling**: Add error handling for subprocess failures and input validation.
-7. **Testing**: Write unit tests for CLI parsing and loop logic.
-8. **Documentation**: Complete this docs directory.
+Status of the project and what's next. Reflects the current orchestrator design,
+not the original loop prototype.
 
-## Milestones
-- **MVP**: Basic loop with default model, fixed iterations.
-- **Configurability**: CLI args for model and iterations.
-- **Polish**: Error handling, verbose mode, documentation.
+## Done
+- [x] CLI with `orchestrate` and `exec` subcommands (clap).
+- [x] `opencode run` adapter with ANSI stripping and defensive JSON extraction.
+- [x] serde contracts: `Plan`, `Step`, `StepResult`, `ReviewDecision`.
+- [x] Planner: spec → design + serialized step list.
+- [x] Executor: tool-using step execution with a structured result envelope.
+- [x] Reviewer: continue / insert / skip / stop, with mid-run plan mutation.
+- [x] Artifact persistence under `.bootstrap/`.
+- [x] Safety: `--max-steps`, `--plan-only`, fail-safe `stop` on unparseable review.
+- [x] Demo scripts and a sample spec (`examples/spec-greeter.txt`).
+- [x] End-to-end proof of concept against a local model — see
+      [poc-summary.md](poc-summary.md).
 
-## Timeline
-- Week 1: Project setup, CLI parsing, basic loop.
-- Week 2: Opencode runner, error handling, testing.
-- Week 3: Polish, documentation, release.
+## Next (highest value first)
+1. **Reliable executor reporting.** The PoC's main weakness: steps did the work
+   but sometimes omitted the JSON envelope, yielding `unknown` results and a
+   false-alarm `stop`. Fix via `opencode run --format json` parsing, or a
+   dedicated "report" sub-call that only emits the envelope.
+2. **Distinct planner/reviewer vs executor models** (`--top-model` /
+   `--exec-model`).
+3. **Collapse redundant inserts** — the reviewer re-derived build/test steps
+   several times; detect and dedupe.
+4. **Resume after stop** — let a human edit and resume a halted run instead of
+   restarting.
+
+## Later
+- Feed cumulative review history back into planning for larger mid-build replans.
+- Per-step ret/timeouts and richer failure classification.
+- Optional parallel execution for independent steps.
 
 ## Risks & Mitigations
-- **opencode CLI changes**: Wrap subprocess invocation in a separate module to allow easy updates.
-- **Performance**: Use efficient I/O; avoid unnecessary allocations in the loop.
-- **User confusion**: Provide clear help text and defaults.
+- **LLM output variance** (local quantized models) → defensive extraction +
+  fail-safe stop; tighten via structured-output mode (item 1).
+- **Runaway inserts** → `--max-steps` cap.
+- **opencode CLI drift** → all invocation isolated in `src/llm.rs`.
