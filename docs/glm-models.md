@@ -134,6 +134,56 @@ unchanged — only the model behind the endpoint differs.
 - **Context:** GLM-5.2 supports 1M tokens, but KV cache at long context competes
   with the experts for RAM — keep `--ctx-size` modest (32–64k) for batch coding.
 
+### Variants: CPU-only and RTX 3060-12G
+
+The A2 is optional. The model lives in RAM either way; a GPU only accelerates the
+*dense/attention* layers (mainly prefill). Two variants on the same 512 GB host:
+
+**A) CPU-only (no GPU).** Works as long as the 282 GB quant fits RAM (it does, in
+512 GB). Drop the GPU flags:
+
+```bash
+HF_HUB_OFFLINE=1 llama-server \
+  -m /path/GLM-5.2-UD-IQ3_XXS-00001-of-*.gguf --alias glm-5.2 \
+  -ngl 0 \                                  # pure CPU
+  --ctx-size 32768 --cache-type-k q8_0 --cache-type-v q8_0 \
+  --jinja -t 8 \                            # -t = physical cores (8 on a 5315Y)
+  --host 127.0.0.1 --port 8080 --n-predict 8192 --api-key local
+# NUMA-pin on a dual socket: numactl --membind=0 --cpunodebind=0 llama-server …
+```
+
+The **bigger CPU-only cost is prefill, not decode**: with no tensor cores (and no
+AMX on these Golds), ingesting a large agent prompt takes tens of seconds to
+minutes per turn. Decode stays ~5–9 tok/s. The 5315Y is bandwidth-rich (8 ch →
+good decode) but core-poor (8 cores → weak prefill); the 20-core 6230 prefills
+better if you have the choice. This variant is strictly overnight-batch.
+
+**B) RTX 3060-12G (a *better* test accelerator than the A2 for raw speed).** The
+3060 has ~360 GB/s and more compute than the A2's ~200 GB/s, so it speeds prefill
+more — at the cost of a smaller 12 GB budget for the GPU-resident dense layers.
+Same expert-offload pattern as §2, just tune `-ngl` down if the 12 GB OOMs:
+
+```bash
+HF_HUB_OFFLINE=1 llama-server -m /path/GLM-5.2-UD-IQ3_XXS-*.gguf --alias glm-5.2 \
+  -ngl 99 -ot ".ffn_.*_exps.=CPU" \         # dense→GPU, experts→512 GB RAM
+  --ctx-size 32768 -fa on -ctk q8_0 -ctv q8_0 --jinja \
+  --host 127.0.0.1 --port 8080 --n-predict 8192 --api-key local
+# if the GPU OOMs: drop -ngl (e.g. 40, then lower) until the dense layers + KV fit 12 GB
+```
+
+The 3060 is a consumer card, so this assumes a **workstation** host (chassis rule,
+[fleet-strategy.md](fleet-strategy.md)). Decode is still RAM-bound (~5–9 tok/s);
+prefill gets the lift. The A2's edge is later, for a standing node: ~40–60 W and
+fanless/rack-friendly, not raw speed.
+
+> **Throughput caveat vs the old Teslas.** The "M40 ≈ 35–45 / P40 ≈ 45–55 tok/s"
+> figures elsewhere in these docs are for **Qwable (3B active)**. GLM-5.2 has
+> **~40B active params** — ~10× more data per token — so even before the
+> CPU-vs-GPU bandwidth gap, GLM-5.2 here runs **~5–10× slower in raw tok/s** than
+> those Tesla-on-Qwable numbers. No Tesla can run GLM-5.2 at all (282 GB ≫ 24 GB);
+> it's a frontier model on a CPU vs a 34B model on a GPU, not a like-for-like
+> comparison.
+
 ### Caveats
 
 - Single-digit tok/s makes this a **batch-only** model on this hardware; do not
