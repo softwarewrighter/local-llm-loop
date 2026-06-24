@@ -1,11 +1,13 @@
-# Proof-of-Concept Summary
+# Proof-of-Concept Summary — macOS / Apple Silicon
 
 A full end-to-end run of the planner → executor → reviewer orchestrator
 (`bootstrap orchestrate`) against a local LLM, building a small Rust CLI from a
-spec file with no human authoring of code.
+spec file with no human authoring of code — on macOS / Apple Silicon. The Arch
+Linux / NVIDIA counterpart is [arch-poc-summary.md](arch-poc-summary.md).
 
 - **Date:** 2026-06-24
 - **Model (all three roles):** `llamacpp/qwable` (Qwable-v1 IQ4_XS) on local llama-server
+- **Host:** macOS / Apple Silicon (Metal), unified memory (full 128k-token context)
 - **Command:** `./scripts/demo-orchestrate.sh` (builds in an isolated temp workspace)
 - **Generation rate observed:** ~31 tok/s (speculative decoding active)
 - **Outcome:** working, tested Rust CLI produced; loop halted with a (false-alarm) Stop

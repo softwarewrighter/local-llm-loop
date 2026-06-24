@@ -56,5 +56,6 @@ when something genuinely needs attention.
 - From a small spec, the loop produces a project that builds and passes its own
   tests, verified independently.
 - The reviewer demonstrably adapts the plan (insert/skip) and halts (stop) rather
-  than emitting false success. (Demonstrated — see [poc-summary.md](poc-summary.md).)
+  than emitting false success. (Demonstrated — see
+  [mac-poc-summary.md](mac-poc-summary.md) and [arch-poc-summary.md](arch-poc-summary.md).)
 - `unknown`-status steps (executor failed to report a structured result) are rare.

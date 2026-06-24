@@ -14,7 +14,8 @@ not the original loop prototype.
 - [x] Safety: `--max-steps`, `--plan-only`, fail-safe `stop` on unparseable review.
 - [x] Demo scripts and a sample spec (`examples/spec-greeter.txt`).
 - [x] End-to-end proof of concept against a local model — see
-      [poc-summary.md](poc-summary.md).
+      [mac-poc-summary.md](mac-poc-summary.md) (macOS) and
+      [arch-poc-summary.md](arch-poc-summary.md) (Arch/NVIDIA).
 
 ## Next (highest value first)
 1. **Reliable executor reporting.** The PoC's main weakness: steps did the work
