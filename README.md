@@ -1,0 +1,110 @@
+# local-llm-loop
+
+A small Rust harness that drives [opencode](https://opencode.ai) against a
+**local** LLM (e.g. Qwable-v1 served by `llama-server`) in an autonomous
+**plan → execute → review** loop.
+
+Give it a short spec file — a goal plus architectural decisions — and it asks
+the model to design a plan, then iterates the steps: a tool-using agent
+implements each step and a supervising model reviews the result and decides
+whether to continue, insert new steps, skip a step, or stop and request human
+intervention.
+
+> The binary and crate are named `bootstrap`; the git repository is
+> `local-llm-loop`.
+
+## Overview
+
+```
+spec.txt
+   │
+   ▼
+[PLAN]   planner LLM → { design, notes, steps[] }              (.bootstrap/plan.json)
+   │
+   ▼
+for each step (Rust owns the cursor + history):
+   ├─ [EXECUTE]  tool-using LLM performs the step, emits a JSON result envelope
+   │             { summary, new_or_changed_files[], changes, features[],
+   │               bugs[], issues[], status }                  (.bootstrap/step-NN-result.json)
+   └─ [REVIEW]   supervising LLM sees the result + remaining steps and returns:
+                   continue | insert | skip | stop             (.bootstrap/step-NN-review.json)
+```
+
+Rust owns all orchestration state; every LLM call is a stateless `opencode run`
+with the needed context passed in the prompt. Structured hand-offs use
+sentinel-delimited JSON that the harness extracts robustly. See
+[docs/orchestrator.md](docs/orchestrator.md) for the full design and
+[docs/poc-summary.md](docs/poc-summary.md) for an annotated end-to-end run.
+
+## Prerequisites
+
+- A Rust toolchain (edition 2024; `rustc` ≥ 1.85) via [rustup](https://rustup.rs/).
+- The `opencode` CLI on your `$PATH`.
+- A model reachable by opencode. The defaults target a local `llama-server`
+  exposing an OpenAI-compatible endpoint, configured in `opencode.json` as the
+  provider/model `llamacpp/qwable`.
+
+## Build
+
+```bash
+cargo build --release
+# binary: target/release/bootstrap
+```
+
+## Usage
+
+The binary has two subcommands.
+
+### `orchestrate` — plan/execute/review from a spec file
+
+```bash
+bootstrap orchestrate path/to/spec.txt \
+  --model llamacpp/qwable \
+  --work-dir /path/to/target/project \
+  --max-steps 20 \
+  --verbose
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<SPEC_FILE>` | Spec file: goal + description + architectural decisions | (required) |
+| `--model` | Model in `provider/model` form | `llamacpp/qwable` |
+| `--work-dir` | Directory the agent works in; `.bootstrap/` artifacts go here | `.` |
+| `--max-steps` | Safety cap on total executed steps | `20` |
+| `--plan-only` | Produce and print the plan, then stop (cheap planner test) | off |
+| `--verbose` | Verbose logging | off |
+
+### `exec` — run an explicit list of tasks
+
+```bash
+bootstrap exec "create a test" "run the test" "validate the results" \
+  --model llamacpp/qwable --verbose
+```
+
+Each task is a separate `opencode run`; by default they chain into one session
+(`--no-chain` to isolate them).
+
+### Demo scripts
+
+```bash
+PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
+./scripts/demo-orchestrate.sh               # full loop in an isolated temp workspace
+./scripts/demo.sh                           # single tool-using exec call
+./scripts/demo-3-steps.sh                   # 3 chained exec tasks
+```
+
+## Documentation
+
+- [docs/orchestrator.md](docs/orchestrator.md) — architecture and control flow (current design)
+- [docs/poc-summary.md](docs/poc-summary.md) — annotated end-to-end proof-of-concept run
+- [docs/usage.md](docs/usage.md) — usage notes
+
+> The `prd.md`, `architecture.md`, `design.md`, and `plan.md` files describe the
+> project's earlier "run opencode in a loop" iteration and are retained for
+> history; see `orchestrator.md` for the current design.
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Michael A. Wright

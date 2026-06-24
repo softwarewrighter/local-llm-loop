@@ -1,0 +1,15 @@
+GOAL
+Build a small, well-tested Rust command-line "greeter" utility.
+
+DESCRIPTION
+A CLI named `greet` that prints a friendly greeting. It takes a required NAME
+argument and an optional --times N flag (default 1) that repeats the greeting N
+times. Invalid input (e.g. --times 0) should produce a clear error.
+
+ARCHITECTURAL DECISIONS
+- Language: Rust, edition 2024. Single binary crate.
+- Argument parsing: clap with the derive feature.
+- Core logic lives in a pure function `greet(name: &str, times: usize) -> String`
+  that is unit-tested; main() only wires up I/O.
+- Include at least one #[test] verifying greet() output for times = 1 and times = 3.
+- Keep dependencies minimal (clap only).
