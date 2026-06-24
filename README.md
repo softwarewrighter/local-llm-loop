@@ -109,6 +109,7 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/arch-poc-summary.md](docs/arch-poc-summary.md) — annotated end-to-end proof-of-concept run (Arch Linux / NVIDIA)
 - [docs/performance-analysis.md](docs/performance-analysis.md) — throughput benchmarks and RTX 3090 vs M1 Max analysis
 - [docs/older-hardware.md](docs/older-hardware.md) — older 24 GB GPUs (Tesla M40 / K80) for an overnight batch fleet
+- [docs/fleet-strategy.md](docs/fleet-strategy.md) — deploying across heterogeneous nodes (GPU/CPU tiers, scheduling, power/$) for overnight batch runs
 
 ## License
 
