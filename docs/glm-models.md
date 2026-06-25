@@ -176,6 +176,26 @@ The 3060 is a consumer card, so this assumes a **workstation** host (chassis rul
 prefill gets the lift. The A2's edge is later, for a standing node: ~40–60 W and
 fanless/rack-friendly, not raw speed.
 
+> **Runnable launcher for the 3060 + big-RAM node:**
+> [config/arch-nvidia-3060/start-glm.sh](config/arch-nvidia-3060/start-glm.sh) is a
+> ready-to-run version of variant B, tuned for the node that ran the
+> [3060 Qwable POC](arch-nvidia-3060-poc-summary.md) (RTX 3060 12 GB + 503 GB RAM).
+> It serves on **port 8082** so it can coexist with the Qwable server on 8081, and
+> exposes `GPU_LAYERS` (lower it if 12 GB OOMs) and `REASONING_BUDGET` (set to 0 if
+> long thinking truncates the planner/reviewer JSON). Pair it with a **separate
+> opencode provider** so both models stay configured at once:
+>
+> ```jsonc
+> "llamacpp-glm": {                       // distinct from the "llamacpp" (qwable) provider
+>   "npm": "@ai-sdk/openai-compatible",
+>   "options": { "baseURL": "http://localhost:8082/v1", "apiKey": "local" },
+>   "models": { "glm-5.2": { "tools": true, "cost": {"input":0,"output":0},
+>                            "limit": { "context": 32768, "output": 8192 } } }
+> }
+> ```
+>
+> Then run the harness with `--model llamacpp-glm/glm-5.2`.
+
 > **Throughput caveat vs the old Teslas.** The "M40 ≈ 35–45 / P40 ≈ 45–55 tok/s"
 > figures elsewhere in these docs are for **Qwable (3B active)**. GLM-5.2 has
 > **~40B active params** — ~10× more data per token — so even before the

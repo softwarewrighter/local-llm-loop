@@ -5,7 +5,7 @@
 
 use crate::llm::{self, Llm};
 use crate::prompts;
-use crate::types::{Plan, ReviewAction, ReviewDecision, Step, StepResult};
+use crate::types::{HistoryEntry, LoopState, Plan, ReviewAction, ReviewDecision, Step, StepResult};
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
@@ -13,10 +13,18 @@ pub struct Options {
     pub spec_file: PathBuf,
     pub model: String,
     pub work_dir: PathBuf,
+    /// Max steps to execute in THIS invocation (a chunk). With `--resume` you can
+    /// run one step at a time across many invocations.
     pub max_steps: usize,
     pub plan_only: bool,
+    /// Continue from `.bootstrap/state.json` instead of planning afresh.
+    pub resume: bool,
     pub verbose: bool,
 }
+
+/// Absolute safety cap on total steps executed across all resumes (guards
+/// against an unbounded insert→insert→… loop on a long-running build).
+const MAX_TOTAL_STEPS: usize = 50;
 
 pub fn run(opts: &Options) -> Result<()> {
     let spec = std::fs::read_to_string(&opts.spec_file)
@@ -35,87 +43,135 @@ pub fn run(opts: &Options) -> Result<()> {
         opts.verbose,
     );
 
-    // ---- PLAN ---------------------------------------------------------------
-    println!("== PLAN == asking {} to design a plan from the spec…", opts.model);
-    let plan = plan(&llm, &opts.work_dir, &spec)?;
-    persist_json(&art_dir.join("plan.json"), &plan)?;
-    print_plan(&plan);
+    let state_path = art_dir.join("state.json");
+
+    // ---- PLAN (or load saved state with --resume) ---------------------------
+    let mut state: LoopState = if opts.resume {
+        let s = load_state(&state_path)?;
+        println!("== RESUME == loaded saved state: {} step(s) executed, cursor at {}/{}",
+            s.executed, s.cursor, s.steps.len());
+        s
+    } else {
+        println!("== PLAN == asking {} to design a plan from the spec…", opts.model);
+        let plan = plan(&llm, &opts.work_dir, &spec)?;
+        persist_json(&art_dir.join("plan.json"), &plan)?;
+        print_plan(&plan);
+        let state = LoopState {
+            design: plan.design,
+            notes: plan.notes,
+            steps: plan.steps,
+            cursor: 0,
+            executed: 0,
+            history: Vec::new(),
+            finished: false,
+            stopped_reason: None,
+        };
+        persist_json(&state_path, &state)?; // so --resume can pick up even after --plan-only
+        state
+    };
 
     if opts.plan_only {
-        println!("\n[--plan-only] stopping after planning. Plan saved to {}", art_dir.join("plan.json").display());
+        println!("\n[--plan-only] plan + state saved to {}.\nRun the steps with: --resume --max-steps 1 (one step per invocation).", art_dir.display());
         return Ok(());
     }
 
-    // ---- EXECUTE + REVIEW LOOP ---------------------------------------------
-    let mut steps: Vec<Step> = plan.steps.clone();
-    let mut history: Vec<(Step, StepResult)> = Vec::new();
-    let mut i = 0usize;
-    let mut executed = 0usize;
+    if state.finished {
+        println!("\n== ALREADY FINISHED == nothing to do (executed {} step(s)).", state.executed);
+        if let Some(r) = &state.stopped_reason {
+            println!("   (had stopped for human review: {r})");
+        }
+        summarize(&state.history);
+        return Ok(());
+    }
 
-    while i < steps.len() {
-        if executed >= opts.max_steps {
-            println!(
-                "\n!! reached --max-steps ({}). Stopping to avoid a runaway loop.",
-                opts.max_steps
-            );
+    // ---- EXECUTE + REVIEW LOOP (up to opts.max_steps THIS invocation) --------
+    let mut ran = 0usize;
+    while state.cursor < state.steps.len() {
+        if ran >= opts.max_steps {
+            println!("\n== PAUSED == ran {ran} step(s) this invocation (--max-steps {}).", opts.max_steps);
+            println!("   {} of {} planned step(s) done. Resume the next with: --resume --max-steps 1",
+                state.cursor, state.steps.len());
+            break;
+        }
+        if state.executed >= MAX_TOTAL_STEPS {
+            println!("\n!! reached absolute safety cap ({MAX_TOTAL_STEPS} total steps). Stopping.");
+            state.finished = true;
             break;
         }
 
-        let step = steps[i].clone();
-        println!("\n== STEP {}/{} == [{}] {}", i + 1, steps.len(), step.id, step.title);
+        let i = state.cursor;
+        let step = state.steps[i].clone();
+        println!("\n== STEP {}/{} == [{}] {}", i + 1, state.steps.len(), step.id, step.title);
 
         // EXECUTE
-        let (result, raw_result_json) = execute(&llm, &opts.work_dir, &spec, &plan.design, &history, &step)?;
+        let (result, raw_result_json) =
+            execute(&llm, &opts.work_dir, &spec, &state.design, &state.history, &step)?;
         persist_json(&art_dir.join(format!("step-{:02}-result.json", step.id)), &result)?;
         print_result(&result);
-        history.push((step.clone(), result));
-        executed += 1;
+        state.history.push(HistoryEntry { step: step.clone(), result });
+        state.executed += 1;
+        ran += 1;
 
         // REVIEW
-        let remaining: Vec<Step> = steps.get(i + 1..).map(|s| s.to_vec()).unwrap_or_default();
-        let decision = review(&llm, &opts.work_dir, &spec, &plan.design, &step, &raw_result_json, &remaining)?;
+        let remaining: Vec<Step> = state.steps.get(i + 1..).map(|s| s.to_vec()).unwrap_or_default();
+        let decision = review(&llm, &opts.work_dir, &spec, &state.design, &step, &raw_result_json, &remaining)?;
         persist_json(&art_dir.join(format!("step-{:02}-review.json", step.id)), &decision)?;
 
         let action = ReviewAction::parse(&decision.action);
         println!("   review → {:?}: {}", action, decision.reason.trim());
 
         match action {
-            ReviewAction::Continue => {
-                i += 1;
-            }
+            ReviewAction::Continue => state.cursor += 1,
             ReviewAction::Insert => {
-                let mut inserted = decision.new_steps.clone();
+                let inserted = decision.new_steps.clone();
                 if inserted.is_empty() {
                     println!("   (insert requested but no new_steps provided — continuing)");
-                    i += 1;
                 } else {
                     println!("   inserting {} new step(s) to run next", inserted.len());
                     let at = i + 1;
-                    for (k, s) in inserted.iter_mut().enumerate() {
-                        steps.insert(at + k, s.clone());
+                    for (k, s) in inserted.into_iter().enumerate() {
+                        state.steps.insert(at + k, s);
                     }
-                    i += 1; // advance into the inserted steps
                 }
+                state.cursor += 1; // advance into the inserted steps
             }
             ReviewAction::Skip => {
-                if i + 1 < steps.len() {
-                    let skipped = steps.remove(i + 1);
+                if i + 1 < state.steps.len() {
+                    let skipped = state.steps.remove(i + 1);
                     println!("   skipping next step [{}] {}", skipped.id, skipped.title);
                 }
-                i += 1;
+                state.cursor += 1;
             }
             ReviewAction::Stop => {
+                state.finished = true;
+                state.stopped_reason = Some(decision.reason.trim().to_string());
+                persist_json(&state_path, &state)?;
                 println!("\n>> HUMAN INTERVENTION REQUESTED — halting build.");
                 println!("   reason: {}", decision.reason.trim());
-                println!("   completed {executed} step(s). State saved under {}", art_dir.display());
+                println!("   completed {} step(s). State saved at {}", state.executed, state_path.display());
                 return Ok(());
             }
         }
+
+        // Persist after each fully-processed step so we can resume exactly here.
+        persist_json(&state_path, &state)?;
     }
 
-    println!("\n== DONE == executed {executed} step(s). Artifacts in {}", art_dir.display());
-    summarize(&history);
+    if state.cursor >= state.steps.len() {
+        state.finished = true;
+        persist_json(&state_path, &state)?;
+        println!("\n== DONE == all {} planned step(s) processed ({} executed). Artifacts in {}",
+            state.steps.len(), state.executed, art_dir.display());
+        summarize(&state.history);
+    }
     Ok(())
+}
+
+fn load_state(path: &Path) -> Result<LoopState> {
+    let s = std::fs::read_to_string(path).with_context(|| {
+        format!("no saved state at {} — run without --resume first (e.g. --plan-only)", path.display())
+    })?;
+    serde_json::from_str(&s).with_context(|| format!("failed to parse saved state {}", path.display()))
 }
 
 /// Relative path (under the work dir) where each role is told to write its JSON.
@@ -150,7 +206,7 @@ fn execute(
     work_dir: &Path,
     spec: &str,
     design: &str,
-    history: &[(Step, StepResult)],
+    history: &[HistoryEntry],
     step: &Step,
 ) -> Result<(StepResult, String)> {
     let rel_out = format!(".bootstrap/step-{:02}-result.llm.json", step.id);
@@ -244,8 +300,9 @@ fn print_result(r: &StepResult) {
     }
 }
 
-fn summarize(history: &[(Step, StepResult)]) {
-    for (s, r) in history {
+fn summarize(history: &[HistoryEntry]) {
+    for h in history {
+        let (s, r) = (&h.step, &h.result);
         println!("  [{}] {} → {}", s.id, s.title, if r.status.is_empty() { "unknown" } else { &r.status });
     }
 }
