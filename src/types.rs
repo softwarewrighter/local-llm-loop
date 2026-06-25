@@ -51,6 +51,39 @@ pub struct StepResult {
     pub status: String,
 }
 
+/// One executed step paired with the result the executor reported for it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub step: Step,
+    pub result: StepResult,
+}
+
+/// The full resumable state of an orchestrate run, persisted to
+/// `.bootstrap/state.json` after every step so the loop can be stopped and
+/// continued (`--resume`) — e.g. to run one step at a time on a slow model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoopState {
+    pub design: String,
+    #[serde(default)]
+    pub notes: String,
+    /// The working step list (mutated in place by review insert/skip).
+    pub steps: Vec<Step>,
+    /// Index of the next step to execute.
+    #[serde(default)]
+    pub cursor: usize,
+    /// Total steps executed so far across all invocations.
+    #[serde(default)]
+    pub executed: usize,
+    #[serde(default)]
+    pub history: Vec<HistoryEntry>,
+    /// True once the loop has run to completion or stopped.
+    #[serde(default)]
+    pub finished: bool,
+    /// Set when the loop halted via a reviewer Stop.
+    #[serde(default)]
+    pub stopped_reason: Option<String>,
+}
+
 /// What the supervising (top) LLM decides to do after reviewing a step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReviewAction {

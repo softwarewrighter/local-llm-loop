@@ -3,7 +3,7 @@
 //! Each prompt asks the model to emit a JSON payload between explicit sentinels
 //! so the Rust side can extract it reliably regardless of surrounding prose.
 
-use crate::types::{Step, StepResult};
+use crate::types::{HistoryEntry, Step};
 use std::fmt::Write as _;
 
 pub const PLAN_START: &str = "<<<PLAN_JSON>>>";
@@ -93,7 +93,7 @@ pub fn plan_prompt(spec: &str, out_path: &str) -> String {
 }
 
 /// Executor: perform one step (tool-using) and report a structured result.
-pub fn step_prompt(spec: &str, design: &str, history: &[(Step, StepResult)], step: &Step, out_path: &str) -> String {
+pub fn step_prompt(spec: &str, design: &str, history: &[HistoryEntry], step: &Step, out_path: &str) -> String {
     let mut p = String::new();
     p.push_str(
         "You are an implementation agent with tools (read/write files, run shell \
@@ -108,7 +108,8 @@ pub fn step_prompt(spec: &str, design: &str, history: &[(Step, StepResult)], ste
     if history.is_empty() {
         p.push_str("(none yet — this is the first step)\n");
     } else {
-        for (s, r) in history {
+        for h in history {
+            let (s, r) = (&h.step, &h.result);
             let _ = writeln!(
                 p,
                 "- step {} \"{}\": {} [status: {}]",

@@ -37,13 +37,19 @@ struct OrchestrateArgs {
     #[arg(long, default_value = ".")]
     work_dir: PathBuf,
 
-    /// Safety cap on total steps executed (guards against runaway inserts)
+    /// Max steps to execute in THIS invocation. With --resume, run one step at a
+    /// time (e.g. --resume --max-steps 1) to spread a slow build over many calls.
     #[arg(long, default_value = "20")]
     max_steps: usize,
 
-    /// Produce and print the plan, then stop (cheap way to test the planner)
+    /// Produce and print the plan, then stop (cheap way to test the planner).
+    /// Also saves resumable state so you can run steps later with --resume.
     #[arg(long)]
     plan_only: bool,
+
+    /// Continue from saved state (.bootstrap/state.json) instead of re-planning.
+    #[arg(long)]
+    resume: bool,
 
     /// Enable verbose output
     #[arg(long)]
@@ -77,6 +83,7 @@ fn main() -> Result<()> {
             work_dir: args.work_dir,
             max_steps: args.max_steps,
             plan_only: args.plan_only,
+            resume: args.resume,
             verbose: args.verbose,
         }),
         Commands::Exec(args) => run_tasks(&args),
