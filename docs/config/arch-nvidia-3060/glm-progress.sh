@@ -29,9 +29,9 @@ while IFS=$'\t' read -r path size; do
   n=$((n+1)); fname="$(basename "$path")"; dest="${DEST}/${fname}"
   have=0; [ -f "$dest" ] && have="$(stat -c%s "$dest" 2>/dev/null || echo 0)"
   want_tot=$((want_tot+size)); have_tot=$((have_tot+have))
-  pct="$(awk "BEGIN{printf \"%.0f\", ($size>0)?100*$have/$size:0}")"
+  pct="$(awk "BEGIN{printf \"%.0f\", ($size>0)?100*$have/$size:100}")"
   [ "$have" = "$size" ] && done_n=$((done_n+1))
-  printf "%-44s %7.1fG %7.1fG %5s%%\n" "$fname" \
+  printf "%-44s %8.2fG %8.2fG %5s%%\n" "$fname" \
     "$(awk "BEGIN{print $have/1e9}")" "$(awk "BEGIN{print $size/1e9}")" "$pct"
 done <<< "$LIST"
 
