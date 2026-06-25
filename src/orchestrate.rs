@@ -37,7 +37,7 @@ pub fn run(opts: &Options) -> Result<()> {
 
     // ---- PLAN ---------------------------------------------------------------
     println!("== PLAN == asking {} to design a plan from the spec…", opts.model);
-    let plan = plan(&llm, &spec)?;
+    let plan = plan(&llm, &opts.work_dir, &spec)?;
     persist_json(&art_dir.join("plan.json"), &plan)?;
     print_plan(&plan);
 
@@ -65,7 +65,7 @@ pub fn run(opts: &Options) -> Result<()> {
         println!("\n== STEP {}/{} == [{}] {}", i + 1, steps.len(), step.id, step.title);
 
         // EXECUTE
-        let (result, raw_result_json) = execute(&llm, &spec, &plan.design, &history, &step)?;
+        let (result, raw_result_json) = execute(&llm, &opts.work_dir, &spec, &plan.design, &history, &step)?;
         persist_json(&art_dir.join(format!("step-{:02}-result.json", step.id)), &result)?;
         print_result(&result);
         history.push((step.clone(), result));
@@ -73,7 +73,7 @@ pub fn run(opts: &Options) -> Result<()> {
 
         // REVIEW
         let remaining: Vec<Step> = steps.get(i + 1..).map(|s| s.to_vec()).unwrap_or_default();
-        let decision = review(&llm, &spec, &plan.design, &step, &raw_result_json, &remaining)?;
+        let decision = review(&llm, &opts.work_dir, &spec, &plan.design, &step, &raw_result_json, &remaining)?;
         persist_json(&art_dir.join(format!("step-{:02}-review.json", step.id)), &decision)?;
 
         let action = ReviewAction::parse(&decision.action);
@@ -118,8 +118,27 @@ pub fn run(opts: &Options) -> Result<()> {
     Ok(())
 }
 
-fn plan(llm: &Llm, spec: &str) -> Result<Plan> {
-    let out = llm.run(&prompts::plan_prompt(spec), "plan")?;
+/// Relative path (under the work dir) where each role is told to write its JSON.
+const PLAN_OUT: &str = ".bootstrap/plan.llm.json";
+
+/// Run one stateless `opencode` call whose JSON answer is delivered via a file.
+///
+/// Modern opencode is agentic and reliably *writes a file* rather than printing
+/// JSON, so we point it at `rel_out` and read that back. We delete any stale file
+/// first (so a failed call can't read an old answer) and fall back to scraping
+/// stdout if the model answered inline instead of writing the file.
+fn capture_json(llm: &Llm, work_dir: &Path, rel_out: &str, prompt: &str, label: &str) -> Result<String> {
+    let abs = work_dir.join(rel_out);
+    let _ = std::fs::remove_file(&abs);
+    let stdout = llm.run(prompt, label)?;
+    match std::fs::read_to_string(&abs) {
+        Ok(s) if !s.trim().is_empty() => Ok(s),
+        _ => Ok(stdout),
+    }
+}
+
+fn plan(llm: &Llm, work_dir: &Path, spec: &str) -> Result<Plan> {
+    let out = capture_json(llm, work_dir, PLAN_OUT, &prompts::plan_prompt(spec, PLAN_OUT), "plan")?;
     llm::parse_json::<Plan>(&out, prompts::PLAN_START, prompts::PLAN_END)
         .context("planner did not return a valid plan")
 }
@@ -128,12 +147,20 @@ fn plan(llm: &Llm, spec: &str) -> Result<Plan> {
 /// verbatim so it sees exactly what the executor reported).
 fn execute(
     llm: &Llm,
+    work_dir: &Path,
     spec: &str,
     design: &str,
     history: &[(Step, StepResult)],
     step: &Step,
 ) -> Result<(StepResult, String)> {
-    let out = llm.run(&prompts::step_prompt(spec, design, history, step), &format!("step {}", step.id))?;
+    let rel_out = format!(".bootstrap/step-{:02}-result.llm.json", step.id);
+    let out = capture_json(
+        llm,
+        work_dir,
+        &rel_out,
+        &prompts::step_prompt(spec, design, history, step, &rel_out),
+        &format!("step {}", step.id),
+    )?;
     match llm::extract_json(&out, prompts::STEP_START, prompts::STEP_END) {
         Ok(json) => {
             let result: StepResult = serde_json::from_str(&json).unwrap_or_else(|_| StepResult {
@@ -159,14 +186,19 @@ fn execute(
 
 fn review(
     llm: &Llm,
+    work_dir: &Path,
     spec: &str,
     design: &str,
     step: &Step,
     result_json: &str,
     remaining: &[Step],
 ) -> Result<ReviewDecision> {
-    let out = llm.run(
-        &prompts::review_prompt(spec, design, step, result_json, remaining),
+    let rel_out = format!(".bootstrap/step-{:02}-review.llm.json", step.id);
+    let out = capture_json(
+        llm,
+        work_dir,
+        &rel_out,
+        &prompts::review_prompt(spec, design, step, result_json, remaining, &rel_out),
         &format!("review {}", step.id),
     )?;
     match llm::parse_json::<ReviewDecision>(&out, prompts::REVIEW_START, prompts::REVIEW_END) {

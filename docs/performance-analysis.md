@@ -1,19 +1,29 @@
-# Performance Analysis — Qwable-v1 IQ4_XS, RTX 3090 vs M1 Max vs P40
+# Performance Analysis — Qwable-v1 IQ4_XS, RTX 3090 vs RTX 3060 vs M1 Max vs P40
 
 How fast the local model runs, and how the host platforms (Arch Linux / NVIDIA
-RTX 3090 and macOS / Apple Silicon M1 Max — plus a *predicted* NVIDIA Tesla P40)
-compare for this project's workload. The per-run traces are in
-[arch-poc-summary.md](arch-poc-summary.md) and
+RTX 3090, Arch Linux / NVIDIA RTX 3060 12 GB, and macOS / Apple Silicon M1 Max —
+plus a *predicted* NVIDIA Tesla P40) compare for this project's workload. The
+per-run traces are in [arch-poc-summary.md](arch-poc-summary.md),
+[arch-nvidia-3060-poc-summary.md](arch-nvidia-3060-poc-summary.md) and
 [mac-poc-summary.md](mac-poc-summary.md); this doc is the apples-to-apples
 analysis.
 
 > **What's actually been run:** the project has been run end-to-end on **M1 Max**
-> (the macOS POC) and **RTX 3090** (the Arch POC + `llama-bench`). It has **not**
-> been tested on the **P40** at all — that section is a pure prediction.
+> (the macOS POC), **RTX 3090** (the Arch POC + `llama-bench`), and **RTX 3060
+> 12 GB** (the CPU-offload POC + `llama-bench`). It has **not** been tested on the
+> **P40** at all — that section is a pure prediction.
 >
-> So: only the **RTX 3090** figures are controlled `llama-bench` measurements; the
-> **M1 Max** figures are derived from its POC run plus hardware characteristics;
-> the **P40** figures are an untested prediction. Confidence is noted per section.
+> So: the **RTX 3090** and **RTX 3060** figures are controlled `llama-bench`
+> measurements; the **M1 Max** figures are derived from its POC run plus hardware
+> characteristics; the **P40** figures are an untested prediction. Confidence is
+> noted per section.
+>
+> ⚠️ **The 3060 is a different regime from everything else here.** Every other row
+> holds the **whole model in the accelerator's memory**. The 3060 has only 12 GB —
+> too small for the 17.6 GiB model — so its experts live in **system RAM** and only
+> part of the model is GPU-resident. Its numbers are *not* a like-for-like GPU
+> comparison; they measure a hybrid GPU + CPU/RAM setup (the same regime as
+> [GLM-5.2](glm-models.md)). See its own section below.
 
 ## Measured baseline — RTX 3090
 
@@ -44,6 +54,49 @@ acceptance is high), so the two figures measure different things. The clean
 comparison is `llama-bench` with the same settings and speculative decoding off
 on both machines.
 
+## Measured — RTX 3060 12 GB (CPU expert-offload)
+
+`llama-bench` on the 3060 with the project's serving flags, **but the model does
+not fit in 12 GB** — so the MoE experts are pushed to system RAM with
+`--n-cpu-moe N` (experts of the first N of 40 layers → CPU). Two operating points,
+build **b9784** (`8be759e`), speculative decoding off:
+
+```bash
+# tuned: 22 of 40 expert layers on the GPU (~11.2 GB VRAM)
+llama-bench -m Qwable-v1.IQ4_XS.gguf -ngl 99 --n-cpu-moe 18 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128
+# max offload: all experts in RAM
+llama-bench -m Qwable-v1.IQ4_XS.gguf -ngl 99 --n-cpu-moe 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128
+```
+
+| Metric | 3060 — all experts in RAM | 3060 — tuned (22/40 on GPU) |
+|--------|--------------------------:|----------------------------:|
+| Prompt / prefill (`pp512`) | ~234 tok/s | **~413 tok/s** |
+| Generation (`tg128`) | ~33 tok/s | **~49 tok/s** |
+
+Host: Xeon E5-2697 v4 (2×18c, quad-channel DDR4 per socket), 503 GB RAM, CUDA 13.
+
+**Reading these numbers:**
+
+- **`--n-cpu-moe` is the throttle.** Moving expert layers from RAM onto the GPU
+  lifts *both* regimes (prefill +77%, decode +48% going from all-CPU to 22-on-GPU)
+  because those layers' matmuls then run on the GPU instead of the CPU, and their
+  weights are read from VRAM (~360 GB/s) instead of system RAM (~60–77 GB/s per
+  socket). Smaller N = faster, until the 12 GB OOMs. N=18 fills ~11.2 GB here.
+- **Decode (~49 tok/s)** is bounded by RAM bandwidth for the CPU-resident experts.
+  It lands ~3× under the 3090 and just below the M1 Max — whose unified memory
+  holds the *whole* model, so none of its experts pay the system-RAM penalty.
+- **Prefill (~413 tok/s)** takes the bigger hit — ~9× under the 3090. Prefill is
+  compute-bound; the experts in RAM are computed on the CPU (AVX2, no AMX/tensor
+  cores), so the 3060's tensor cores only accelerate the layers they hold. This is
+  the structural cost of not fitting in VRAM, and it's the regime agentic coding
+  leans on hardest (big per-turn prompts).
+
+> Why decode survives offload but prefill suffers: decode reads only the **~3B
+> active** params per token (a bandwidth problem RAM can mostly keep up with),
+> while prefill does **dense matmuls over the whole prompt** (a compute problem the
+> CPU is bad at). Same reason the [GLM-5.2](glm-models.md) plan attaches a GPU
+> mainly to help *prefill*.
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor
@@ -56,14 +109,14 @@ hardware differently:
 
 ### Hardware
 
-| | RTX 3090 | M1 Max | Tesla P40 |
-|---|---|---|---|
-| Memory bandwidth | ~936 GB/s | ~400 GB/s | ~346 GB/s |
-| FP16 **tensor-core** matmul | ~71–142 TFLOPS | — (no tensor cores) | — (no tensor cores) |
-| INT8 tensor (MMQ path) | ~284 TOPS | — | ~47 TOPS (DP4A, no tensor cores) |
-| Native FP16 (non-matmul) | full | full | **1/64 rate (~0.18 TFLOPS) — effectively broken** |
-| GPU shader FP16/FP32 | (fallback) | ~10–20 TFLOPS | ~12 TFLOPS (FP32) |
-| Max KV cache (this model) | ~32k tokens (24 GB cap) | full 128k (unified memory) | ~32k tokens (24 GB cap) |
+| | RTX 3090 | RTX 3060 12 GB | M1 Max | Tesla P40 |
+|---|---|---|---|---|
+| Memory bandwidth | ~936 GB/s | ~360 GB/s (VRAM) + ~60–77 GB/s/socket (system RAM) | ~400 GB/s | ~346 GB/s |
+| FP16 **tensor-core** matmul | ~71–142 TFLOPS | ~51–102 TFLOPS (only for GPU-held layers) | — (no tensor cores) | — (no tensor cores) |
+| INT8 tensor (MMQ path) | ~284 TOPS | ~102 TOPS (GPU layers only) | — | ~47 TOPS (DP4A, no tensor cores) |
+| Native FP16 (non-matmul) | full | full | full | **1/64 rate (~0.18 TFLOPS) — effectively broken** |
+| Fits the 17.6 GiB model? | **yes** (24 GB) | **no** — experts offloaded to RAM | yes (unified) | yes (24 GB) |
+| Max KV cache (this model) | ~32k tokens (24 GB cap) | ~32k (12 GB, mostly model+experts) | full 128k (unified memory) | ~32k tokens (24 GB cap) |
 
 ## How the IQ4_XS quantization affects the comparison
 
@@ -176,6 +229,15 @@ For this project's workload the **RTX 3090 is clearly faster**:
 The M1 Max's one real advantage is **unified memory**: it can hold the full
 **128k-token** KV cache, while the 24 GB 3090 is capped at the **32k** context
 configured here.
+
+And the **RTX 3060 12 GB** shows the floor: when the model *doesn't fit*, the loop
+still runs correctly (identical plan/execute/review behavior and output quality —
+see [arch-nvidia-3060-poc-summary.md](arch-nvidia-3060-poc-summary.md)) at
+**~49 tok/s decode / ~413 tok/s prefill** with experts in RAM. Decode stays in the
+M1 Max's league because only ~3B params are read per token; prefill drops ~9×
+below the 3090 because the RAM-resident experts are computed on the CPU. That
+trade — cheap card + lots of RAM, GPU accelerating only what it holds — is the
+whole premise of the [GLM-5.2](glm-models.md) plan, here validated on a 35B MoE.
 
 ### Getting a true number
 

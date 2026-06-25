@@ -51,8 +51,27 @@ const REVIEW_SCHEMA: &str = r#"{
   ]
 }"#;
 
+/// Append the "write the JSON to this file" instruction shared by every role.
+///
+/// We hand the JSON off via a file rather than stdout: modern opencode runs an
+/// agentic loop that prefers tool calls over inline prose, so a known output
+/// path is the reliable channel. The file ends up containing clean JSON (no
+/// reasoning preamble), and `out_path` is relative to opencode's `--dir`
+/// (the work dir).
+fn append_write_json(p: &mut String, out_path: &str, schema: &str) {
+    let _ = write!(
+        p,
+        "Write ONLY a single JSON object to the file `{out_path}` (relative to the \
+         project directory), overwriting any existing file. Do not wrap it in \
+         markdown fences — the file must contain nothing but the JSON, in this shape:\n"
+    );
+    p.push_str(schema);
+    p.push('\n');
+    let _ = write!(p, "After writing `{out_path}`, reply with just: DONE\n");
+}
+
 /// Planner: turn the spec into a design + ordered, serialized step list.
-pub fn plan_prompt(spec: &str) -> String {
+pub fn plan_prompt(spec: &str, out_path: &str) -> String {
     let mut p = String::new();
     p.push_str(
         "You are a senior software architect and planner. You produce concrete, \
@@ -66,21 +85,15 @@ pub fn plan_prompt(spec: &str) -> String {
         "Produce (1) a concise DESIGN and (2) an ordered list of small, concrete, \
          independently-verifiable implementation STEPS. Each step must be small enough \
          for one coding agent to complete in a single pass. Honor every architectural \
-         decision in the spec. Prefer 3-8 steps for a small project.\n\n",
+         decision in the spec. Prefer 3-8 steps for a small project. Number steps \
+         sequentially starting at 1.\n\n",
     );
-    p.push_str("Output ONLY a JSON object between these markers, with no other text:\n");
-    p.push_str(PLAN_START);
-    p.push('\n');
-    p.push_str(PLAN_SCHEMA);
-    p.push('\n');
-    p.push_str(PLAN_END);
-    p.push('\n');
-    p.push_str("Number steps sequentially starting at 1.\n");
+    append_write_json(&mut p, out_path, PLAN_SCHEMA);
     p
 }
 
 /// Executor: perform one step (tool-using) and report a structured result.
-pub fn step_prompt(spec: &str, design: &str, history: &[(Step, StepResult)], step: &Step) -> String {
+pub fn step_prompt(spec: &str, design: &str, history: &[(Step, StepResult)], step: &Step, out_path: &str) -> String {
     let mut p = String::new();
     p.push_str(
         "You are an implementation agent with tools (read/write files, run shell \
@@ -115,15 +128,10 @@ pub fn step_prompt(spec: &str, design: &str, history: &[(Step, StepResult)], ste
         let _ = write!(p, "Acceptance: {}\n", step.acceptance);
     }
     p.push_str(
-        "\nDo the work now using your tools. After the work is done, output a result \
-         envelope as JSON between these markers (any explanation may precede it):\n",
+        "\nDo the work now using your tools (read/write project files, run commands). \
+         When the work is done, report what you did: ",
     );
-    p.push_str(STEP_START);
-    p.push('\n');
-    p.push_str(STEP_RESULT_SCHEMA);
-    p.push('\n');
-    p.push_str(STEP_END);
-    p.push('\n');
+    append_write_json(&mut p, out_path, STEP_RESULT_SCHEMA);
     p
 }
 
@@ -134,6 +142,7 @@ pub fn review_prompt(
     step: &Step,
     result_json: &str,
     remaining: &[Step],
+    out_path: &str,
 ) -> String {
     let mut p = String::new();
     p.push_str(
@@ -162,13 +171,7 @@ pub fn review_prompt(
          - \"skip\": the next planned step is no longer needed; skip it.\n\
          - \"stop\": something needs human intervention; halt the build.\n\n",
     );
-    p.push_str("Output ONLY this JSON between the markers, with no other text:\n");
-    p.push_str(REVIEW_START);
-    p.push('\n');
-    p.push_str(REVIEW_SCHEMA);
-    p.push('\n');
-    p.push_str(REVIEW_END);
-    p.push('\n');
     p.push_str("Use an empty \"new_steps\" list unless the action is \"insert\".\n");
+    append_write_json(&mut p, out_path, REVIEW_SCHEMA);
     p
 }
