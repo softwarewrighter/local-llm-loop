@@ -63,23 +63,39 @@ parseable JSON?** (the harness uses `serde_json`).
 | Qwen3-14B Q4 + 0.6B Q8 | ✅ 97 t/s, 55% accept | ✅ native `tool_calls` | ❌ trailing comma / bad escaping | plan parse fails |
 | **Qwen3-Coder-30B-A3B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified** |
 | **Gemma-4-26B-A4B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified — best code** |
+| **Gemma-4-31B Q4 + E2B Q4 draft** | ✅ 36→46 t/s, 44% accept | ✅ native | ✅ clean | ✅ **completes, verified** (slow; flaky path 1/2) |
 | gpt-oss-20b MXFP4 (solo) | n/a (MoE) | ✅ native | ❌ literal control char in JSON | plan parse fails |
+| Granite-4.1-8B Q4 (solo) | n/a | ✅ native | ❌ invalid JSON + wrong path | plan parse fails |
 
 ### Verified-working set (besides Qwable)
 
-Three models complete the loop and produce independently-verified code on this box:
+Four models (incl. Qwable) complete the loop and produce independently-verified
+code on this box — across three vendors, one a dense spec-decode pair:
 
-| Model | Decode | Greeter result |
-|---|---|---|
-| **Qwen3-Coder-30B-A3B** | ~189 t/s | 3/3 tests; greeting = bare name |
-| **Gemma-4-26B-A4B** | ~142 t/s | 2/2 tests; greeting = `Hello, X!` (best quality) |
-| Qwable-v1 (baseline) | ~158 t/s | (prior POCs) |
+| Model | Arch | Decode | Greeter result |
+|---|---|---|---|
+| **Gemma-4-26B-A4B** | MoE solo | ~142 t/s | 2/2 tests; `Hello, X!` (best quality) |
+| **Qwen3-Coder-30B-A3B** | MoE solo | ~189 t/s | 3/3 tests; bare name |
+| **Gemma-4-31B + E2B** | dense + spec-decode | 36→~46 t/s | 2/2 tests; `Hello, X!`; richest review (Continue/Insert/Skip) |
+| Qwable-v1 (baseline) | MoE solo | ~158 t/s | (prior POCs) |
 
-Two newer candidates clear tool-calling but not the clean-JSON gate and so don't
-complete the loop today — **gpt-oss-20b** (emits a literal control char in its JSON
-envelope; fastest model measured at ~205 t/s decode) and the dense **Qwen3-14B**
-pair (trailing comma / unescaped quotes). They become viable if the model's output
-is constrained to valid JSON at the source (grammar / json-schema) — see next steps.
+**Gemma-4-31B + E2B** is the working **dense speculative-decoding coding pair**
+(exact 262144 vocab match; `--spec-type draft-simple`; ~1.3× over solo). It runs at
+ctx 16384 to fit the draft in 24 GB. Two caveats: it's **slow** (dense → ~12-min
+loop) and showed a **flaky path bug** (1 of 2 runs wrote an absolute `/.bootstrap/`
+path that opencode auto-rejected; the retry succeeded).
+
+Three candidates clear tool-calling but **fail the clean-JSON gate**, so they don't
+complete the loop today:
+- **gpt-oss-20b** — literal control char in its JSON envelope; *fastest measured*
+  (~205 t/s decode).
+- **Granite-4.1-8B** — invalid JSON *and* mangled the `.bootstrap/` path (dropped
+  the dot); 8B is too small for reliable strict JSON.
+- **Qwen3-14B** pair — trailing comma / unescaped quotes.
+
+They become viable only if model output is constrained to valid JSON at the source
+(grammar / json-schema) — see next steps. **Pattern:** the reliable models are the
+larger MoE/dense coders (≥26B); sub-15B models flunk strict JSON.
 
 Conclusions from the matrix:
 
