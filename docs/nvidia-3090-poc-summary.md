@@ -148,10 +148,18 @@ MODEL=llamacpp/qwen-coder ./scripts/demo-orchestrate.sh
 - **Tighten the executor envelope.** Step 1 still returned `status: unknown`
   (the executor said "DONE" without the JSON envelope) but the reviewer continued;
   the same structured-output reliability item from the macOS PoC remains.
-- **Optionally constrain JSON with a grammar.** llama.cpp `--grammar` /
-  json-schema could make malformed JSON *impossible*, which would let smaller/
-  faster models (even Qwen3-14B) drive the loop. Not needed with the 30B-A3B coder,
-  but it's the general fix for "the model emits almost-valid JSON."
+- **Liberal JSON parsing (done, partial).** The harness now retries a failed
+  `serde_json` parse against a string-aware **trailing-comma stripper**
+  (`llm::relax_json`, Postel's "be liberal in what you accept") — the harness owns
+  this parse, so it is the right layer to relax. This fixes the **trailing-comma**
+  failure. It deliberately does **not** repair **unescaped inner quotes** (e.g. a
+  model writing `"4.0.0"` inside a string value) — that is ambiguous and any guess
+  can silently corrupt the plan. Qwen3-14B emits *both* malformations, so it still
+  isn't reliable; the clean-JSON 30B-A3B coder needs neither repair.
+- **Constrain JSON at the source (the real fix for unescaped quotes).** llama.cpp
+  `--grammar` / json-schema would make malformed JSON *impossible* ("be
+  conservative in what you send"), but that constraint is injected at the request
+  layer, which opencode owns — not reachable from the harness through this stack.
 - **A `Hello, {name}!` nudge in the spec** if the literal greeting matters; the
   current spec's "a friendly greeting" is ambiguous enough that the model returned
   the bare name.
