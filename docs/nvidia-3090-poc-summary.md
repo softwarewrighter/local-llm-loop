@@ -49,6 +49,12 @@ model's tool calls into native `tool_calls`?** (opencode is agentic — if not, 
 executor "narrates" work it never does), and **(B) does the model emit strict,
 parseable JSON?** (the harness uses `serde_json`).
 
+> **Three distinct Qwen-lineage models appear below — do not conflate them:**
+> **Qwen2.5-Coder** (the *2.5* dense coder, failed on tool-calling),
+> **Qwen3-14B** (*base* Qwen3 — **not** a coder — paired for spec-decode, failed on
+> JSON), and **Qwen3-Coder-30B-A3B** (the *3.x* MoE **coder**, which succeeded).
+> They are three different models; only the last is the working coder.
+
 | Target + draft | Spec-decode | (A) Tool calls | (B) Strict JSON | Loop |
 |---|---|---|---|---|
 | Qwen2.5-Coder-32B Q4 + 1.5B | — | — | — | **OOM** at 32k (21.7 GB weights) |
@@ -56,6 +62,24 @@ parseable JSON?** (the harness uses `serde_json`).
 | Qwen2.5-Coder-14B **Q5** + 1.5B Q8 | ✅ engaged | ❌ **same** wrong delimiter | — | (not a quant artifact) |
 | Qwen3-14B Q4 + 0.6B Q8 | ✅ 97 t/s, 55% accept | ✅ native `tool_calls` | ❌ trailing comma / bad escaping | plan parse fails |
 | **Qwen3-Coder-30B-A3B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified** |
+| **Gemma-4-26B-A4B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified — best code** |
+| gpt-oss-20b MXFP4 (solo) | n/a (MoE) | ✅ native | ❌ literal control char in JSON | plan parse fails |
+
+### Verified-working set (besides Qwable)
+
+Three models complete the loop and produce independently-verified code on this box:
+
+| Model | Decode | Greeter result |
+|---|---|---|
+| **Qwen3-Coder-30B-A3B** | ~189 t/s | 3/3 tests; greeting = bare name |
+| **Gemma-4-26B-A4B** | ~142 t/s | 2/2 tests; greeting = `Hello, X!` (best quality) |
+| Qwable-v1 (baseline) | ~158 t/s | (prior POCs) |
+
+Two newer candidates clear tool-calling but not the clean-JSON gate and so don't
+complete the loop today — **gpt-oss-20b** (emits a literal control char in its JSON
+envelope; fastest model measured at ~205 t/s decode) and the dense **Qwen3-14B**
+pair (trailing comma / unescaped quotes). They become viable if the model's output
+is constrained to valid JSON at the source (grammar / json-schema) — see next steps.
 
 Conclusions from the matrix:
 
