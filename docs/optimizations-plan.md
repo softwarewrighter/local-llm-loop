@@ -1,5 +1,15 @@
 # Optimizations Plan — fast, low-power local coding (for the RTX 3090 node)
 
+> ✅ **Implemented — see [nvidia-3090-poc-summary.md](nvidia-3090-poc-summary.md)
+> for actual results.** This is the original *plan*; the build diverged from it.
+> The plan assumed a Qwen2.5-Coder dense target + tiny draft via speculative
+> decoding under one `qwen-coder` alias / `start-coder-specdecode.sh`. In practice
+> Qwen2.5-Coder's tool-calling is broken in llama.cpp, and the winning config is a
+> **Qwen3-Coder-30B-A3B MoE run solo**. Each model now has its **own alias + dir +
+> start script** (`start-qwen3-coder.sh`, `start-gemma4-26b.sh`, `start-gemma4-31b.sh`,
+> `start-qwable.sh`); the `qwen-coder`/`start-coder-specdecode.sh` names below are
+> historical. Treat code/alias snippets here as illustrative, not current.
+
 **Audience:** a fresh agent (a copy of Claude Code) running on the **RTX 3090
 24 GB** workstation, tasked with implementing the next-generation serving config
 for this harness. This doc is self-contained: it captures *why* (measured on the

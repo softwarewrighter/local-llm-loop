@@ -8,10 +8,11 @@
 #   API key  : "local"   (must match opencode.json provider.options.apiKey)
 #   Model id : qwable    (the --alias; opencode refs it as llamacpp/qwable)
 #
-# This is the QWABLE script. Its sibling start-coder-specdecode.sh in this same
-# dir is the separate Qwen2.5-Coder spec-decode profile. Run ONE at a time — they
-# both bind :8080 and both want most of the 24 GB. Point opencode's
-# provider.model at whichever alias is currently served.
+# This is the QWABLE script (the baseline). Sibling per-model scripts in this dir:
+#   start-qwen3-coder.sh  — Qwen3-Coder-30B-A3B MoE (alias qwen3-coder, verified)
+#   start-gemma4-26b.sh   — Gemma-4-26B-A4B MoE   (alias gemma4-26b, verified, best quality)
+#   start-gemma4-31b.sh   — Gemma-4-31B + E2B draft, dense spec-decode (alias gemma4-31b)
+# Run ONE at a time — they all bind :8080. Point opencode at the matching alias.
 #
 # --reasoning-budget 0: this Qwable build is reasoning-distilled; left unbounded
 # it burns the whole --n-predict budget in a <think> stream before answering.
