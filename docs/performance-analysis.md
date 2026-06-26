@@ -59,11 +59,21 @@ loop and produces an **independently-verified** Rust CLI (`cargo test` passes); 
 | Qwable-v1 IQ4_XS | MoE 35B-A3B | 18.9 GiB | ~3,605 t/s | ~158 t/s | ✅ | `Hello, X!` |
 | **Qwen3-Coder-30B-A3B** Q4_K_M | MoE 30B-A3B | 17.3 GiB | ~4,043 t/s | **~189 t/s** | ✅ | bare name |
 | **Gemma-4-26B-A4B** Q4_K_M | MoE 26B-A4B | 15.6 GiB | ~4,209 t/s | ~142 t/s | ✅ | **`Hello, X!`** ✦ |
+| **Gemma-4-31B** Q4_K_M (dense) | dense 31B | 17.4 GiB | ~1,217 t/s | ~36 t/s (→~46 w/ E2B draft) | ✅ | `Hello, X!` |
 | gpt-oss-20b MXFP4 | MoE 21B-A3B | 11.3 GiB | **~5,652 t/s** | **~205 t/s** | ❌ | — (JSON ctrl-char) |
+| Granite-4.1-8B Q4_K_M | hybrid 8B | 5.0 GiB | — | ~111 t/s | ❌ | — (invalid JSON) |
 
 ✦ Gemma-4-26B-A4B produced the highest-quality greeter — the proper `Hello, {name}!`
 form with correct `--times 0` error handling — while Qwen3-Coder emitted the bare
-repeated name. **The three ✅ models are the verified-working set on this box.**
+repeated name. **The four ✅ models are the verified-working set on this box.**
+
+Note the **dense vs MoE decode gap**: Gemma-4-**31B dense** decodes at ~36 t/s (all
+30.7B params active per token), ~4–5× slower than the ~3–4B-active MoEs — exactly
+the case where speculative decoding pays off. The **Gemma-4-31B + Gemma-4-E2B** pair
+(`--spec-type draft-simple`, exact 262144 vocab, ctx 16384 to fit 24 GB) lifts decode
+to ~46 t/s (~1.3×) and completes the loop — the one verified *dense spec-decode
+coding pair*. Still far slower than an MoE solo, so the MoE coders win on speed;
+the dense pair is the option when you specifically want a dense model.
 
 Takeaways:
 - **The fast models here are all ~3–4B-active MoE.** Decode is memory-bandwidth-

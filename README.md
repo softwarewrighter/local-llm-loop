@@ -19,11 +19,13 @@ code that passes `cargo test`), measured on an RTX 3090:
 |-------|-------|
 | **Gemma-4-26B-A4B-it** | MoE, best greeter quality (`Hello, X!`) — see [3090 POC](docs/nvidia-3090-poc-summary.md) |
 | **Qwen3-Coder-30B-A3B-Instruct** | MoE, fastest verified coder (~189 tok/s decode) |
+| **Gemma-4-31B-it + Gemma-4-E2B draft** | dense + speculative decoding (exact-vocab pair); slower, but the one verified dense spec-decode pair |
 | **Qwable-v1 IQ4_XS** | the original baseline |
 
 A model needs two things to work here: **native tool-calling that llama.cpp
-parses** and **strict-JSON output**. Some otherwise-capable models fail one gate
-(e.g. Qwen2.5-Coder's tool-call delimiter; gpt-oss-20b's JSON control char) — the
+parses** and **strict-JSON output**. Larger MoE/dense coders (≥26B) clear both;
+several otherwise-capable models fail one gate — Qwen2.5-Coder (tool-call
+delimiter), gpt-oss-20b and Granite-4.1-8B (JSON), Qwen3-14B (JSON). The
 [3090 POC](docs/nvidia-3090-poc-summary.md) has the full model-search matrix and
 [performance-analysis.md](docs/performance-analysis.md) the throughput comparison.
 
