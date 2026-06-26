@@ -23,6 +23,22 @@ measured reasons documented below.
 - **Outcome:** **working, independently-verified Rust CLI**; loop ran all 6 steps
   to a natural completion (6× Continue, no fail-safe Stop). Wall-clock ~210 s.
 
+## ⚠️ Three different "Qwen" models were tested — don't conflate them
+
+The `qwen-coder` alias and the `/disk1/models/qwen-coder/` directory are overloaded
+(they hold several models). Three *distinct* Qwen-lineage models were evaluated,
+with **opposite outcomes** — the names differ by one token but the models are
+unrelated:
+
+| Model (exact) | Family | Coder? | Result |
+|---|---|:---:|---|
+| **Qwen2.5-Coder** 14B / 32B (dense) | Qwen **2.5** | yes | ❌ **FAILED** — wrong tool-call delimiter (`<tools>`), any quant |
+| **Qwen3-14B** (+ Qwen3-0.6B draft) | Qwen **3** *base* | **no** | ❌ **FAILED** — malformed JSON (trailing comma / unescaped quotes) |
+| **Qwen3-Coder-30B-A3B-Instruct** (MoE) | Qwen **3** *Coder* | yes | ✅ **SUCCEEDED** — completes loop, 3/3 tests (verified: GGUF `general.name = Qwen3-Coder-30B-A3B-Instruct`) |
+
+So the **non-coder Qwen3-14B failed**, while the **Qwen3-*Coder*-30B-A3B succeeded**.
+The winning model below is the latter — the genuine MoE coder, not the base model.
+
 ## Result — the loop completed and the CLI works
 
 The planner produced a 6-step plan; the executor implemented each step (real tool
