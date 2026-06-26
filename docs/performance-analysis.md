@@ -45,6 +45,31 @@ llama-bench -m Qwable-v1.IQ4_XS.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n
 > mixture-of-experts with ~3B active parameters per token**. Only the active
 > experts are read per token, which is why a "35B" model decodes this fast.
 
+### Qwen3-Coder-30B-A3B vs Qwable on the RTX 3090
+
+The [3090 coder POC](nvidia-3090-poc-summary.md) replaced Qwable with
+**Qwen3-Coder-30B-A3B-Instruct** (a stronger *agentic* coder that actually drives
+opencode's tools and emits clean JSON — see that doc for the model-search). It is
+also another `~3B-active` MoE, so it's a fair like-for-like row. Same `llama-bench`
+flags (`-ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128`):
+
+| Metric | Qwable-v1 IQ4_XS (35B-A3B) | **Qwen3-Coder-30B-A3B Q4_K_M** |
+|--------|---------------------------:|-------------------------------:|
+| Model size on disk | 18.9 GiB | **17.3 GiB** |
+| Prefill (`pp512`) | ~3,605 tok/s | **~4,043 tok/s** (~+12%) |
+| Decode (`tg128`) | ~158 tok/s | **~189 tok/s** (~+20%) |
+| VRAM (whole model + 32k KV) | ~21 GB | **~20.8 GB** |
+
+**The better coder is also the faster model.** Qwen3-Coder is slightly smaller and
+a newer architecture, so on the same 3090 it prefills ~12% faster and decodes ~20%
+faster than Qwable — while being far more capable at agentic coding. It runs
+**solo** (no speculative-decoding draft): on an A3B MoE only ~3.3B params are
+active per token, so decode is already memory-bandwidth-bound and a draft gives no
+net gain. (Speculative decoding still helps *dense* targets — measured 1.3–1.75×
+in the POC — but no dense pair tried beats this MoE solo.)
+
+(llama.cpp build 9728 / 96399f2; both rows are controlled `llama-bench` runs.)
+
 ### Why the POC numbers (~132 vs ~31 tok/s) are *not* a fair comparison
 
 The Arch POC observed ~132 tok/s generation; the macOS POC reported ~31 tok/s.
