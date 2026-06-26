@@ -1,14 +1,31 @@
 # local-llm-loop
 
 A small Rust harness that drives [opencode](https://opencode.ai) against a
-**local** LLM (e.g. Qwable-v1 served by `llama-server`) in an autonomous
-**plan → execute → review** loop.
+**local** LLM in an autonomous **plan → execute → review** loop.
 
 Give it a short spec file — a goal plus architectural decisions — and it asks
 the model to design a plan, then iterates the steps: a tool-using agent
 implements each step and a supervising model reviews the result and decides
 whether to continue, insert new steps, skip a step, or stop and request human
 intervention.
+
+The harness is **model-agnostic** — it shells out to `opencode run --model
+<provider/model>`, so any model opencode can reach works. It started against
+Qwable-v1 but has since driven the loop to a verified, working Rust CLI with
+several local models. **Verified-working models** (complete the loop and produce
+code that passes `cargo test`), measured on an RTX 3090:
+
+| Model | Notes |
+|-------|-------|
+| **Gemma-4-26B-A4B-it** | MoE, best greeter quality (`Hello, X!`) — see [3090 POC](docs/nvidia-3090-poc-summary.md) |
+| **Qwen3-Coder-30B-A3B-Instruct** | MoE, fastest verified coder (~189 tok/s decode) |
+| **Qwable-v1 IQ4_XS** | the original baseline |
+
+A model needs two things to work here: **native tool-calling that llama.cpp
+parses** and **strict-JSON output**. Some otherwise-capable models fail one gate
+(e.g. Qwen2.5-Coder's tool-call delimiter; gpt-oss-20b's JSON control char) — the
+[3090 POC](docs/nvidia-3090-poc-summary.md) has the full model-search matrix and
+[performance-analysis.md](docs/performance-analysis.md) the throughput comparison.
 
 > The binary and crate are named `bootstrap`; the git repository is
 > `local-llm-loop`.

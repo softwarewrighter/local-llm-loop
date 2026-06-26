@@ -45,30 +45,38 @@ llama-bench -m Qwable-v1.IQ4_XS.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n
 > mixture-of-experts with ~3B active parameters per token**. Only the active
 > experts are read per token, which is why a "35B" model decodes this fast.
 
-### Qwen3-Coder-30B-A3B vs Qwable on the RTX 3090
+### Coding models on the RTX 3090 — multi-model comparison
 
-The [3090 coder POC](nvidia-3090-poc-summary.md) replaced Qwable with
-**Qwen3-Coder-30B-A3B-Instruct** (a stronger *agentic* coder that actually drives
-opencode's tools and emits clean JSON — see that doc for the model-search). It is
-also another `~3B-active` MoE, so it's a fair like-for-like row. Same `llama-bench`
-flags (`-ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128`):
+The harness is **model-agnostic**, so the 3090 has been used to evaluate several
+local coding models against the same greeter loop. All rows are controlled
+`llama-bench` runs with identical flags (`-ngl 99 -fa 1 -ctk q8_0 -ctv q8_0
+-p 512 -n 128`, llama.cpp b9728). "Loop" = completes the planner→executor→reviewer
+loop and produces an **independently-verified** Rust CLI (`cargo test` passes); see
+[nvidia-3090-poc-summary.md](nvidia-3090-poc-summary.md) for the full model-search.
 
-| Metric | Qwable-v1 IQ4_XS (35B-A3B) | **Qwen3-Coder-30B-A3B Q4_K_M** |
-|--------|---------------------------:|-------------------------------:|
-| Model size on disk | 18.9 GiB | **17.3 GiB** |
-| Prefill (`pp512`) | ~3,605 tok/s | **~4,043 tok/s** (~+12%) |
-| Decode (`tg128`) | ~158 tok/s | **~189 tok/s** (~+20%) |
-| VRAM (whole model + 32k KV) | ~21 GB | **~20.8 GB** |
+| Model | Arch | Size | Prefill `pp512` | Decode `tg128` | Loop? | Greeting quality |
+|-------|------|-----:|----------------:|---------------:|:-----:|------------------|
+| Qwable-v1 IQ4_XS | MoE 35B-A3B | 18.9 GiB | ~3,605 t/s | ~158 t/s | ✅ | `Hello, X!` |
+| **Qwen3-Coder-30B-A3B** Q4_K_M | MoE 30B-A3B | 17.3 GiB | ~4,043 t/s | **~189 t/s** | ✅ | bare name |
+| **Gemma-4-26B-A4B** Q4_K_M | MoE 26B-A4B | 15.6 GiB | ~4,209 t/s | ~142 t/s | ✅ | **`Hello, X!`** ✦ |
+| gpt-oss-20b MXFP4 | MoE 21B-A3B | 11.3 GiB | **~5,652 t/s** | **~205 t/s** | ❌ | — (JSON ctrl-char) |
 
-**The better coder is also the faster model.** Qwen3-Coder is slightly smaller and
-a newer architecture, so on the same 3090 it prefills ~12% faster and decodes ~20%
-faster than Qwable — while being far more capable at agentic coding. It runs
-**solo** (no speculative-decoding draft): on an A3B MoE only ~3.3B params are
-active per token, so decode is already memory-bandwidth-bound and a draft gives no
-net gain. (Speculative decoding still helps *dense* targets — measured 1.3–1.75×
-in the POC — but no dense pair tried beats this MoE solo.)
+✦ Gemma-4-26B-A4B produced the highest-quality greeter — the proper `Hello, {name}!`
+form with correct `--times 0` error handling — while Qwen3-Coder emitted the bare
+repeated name. **The three ✅ models are the verified-working set on this box.**
 
-(llama.cpp build 9728 / 96399f2; both rows are controlled `llama-bench` runs.)
+Takeaways:
+- **The fast models here are all ~3–4B-active MoE.** Decode is memory-bandwidth-
+  bound on the active set, so a "20–35B" model decodes at 140–205 tok/s. gpt-oss-20b
+  is fastest on raw throughput but **fails the loop** (it emits a literal control
+  character in its JSON envelope — passes tool-calling, fails clean-JSON).
+- **Throughput ≠ usability.** Gemma-4 is the *slowest* of the MoEs yet writes the
+  *best* code; gpt-oss is the *fastest* yet unusable in the loop. The selection
+  metric is "completes the loop with verified, good code," not tok/s.
+- **Speculative decoding** still helps *dense* targets (measured 1.3–1.75× in the
+  POC) but none of the dense pairs tried beat these MoE-solo runs, and the best
+  coders ship MoE-only, so the practical pattern on a 24 GB card is **fast MoE,
+  run solo**.
 
 ### Why the POC numbers (~132 vs ~31 tok/s) are *not* a fair comparison
 
