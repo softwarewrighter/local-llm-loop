@@ -9,15 +9,24 @@ Reference configs for the two processes this project depends on:
 
 ```
 docs/config/
-├── opencode.json            # portable — same on macOS and Linux
-├── mac/start-qwable.sh      # Apple Silicon / Metal
-└── arch-nvidia/start-qwable.sh   # Arch Linux / NVIDIA CUDA
+├── opencode.json                      # portable — verified-working models, one per alias
+├── mac/start-qwable.sh                # Apple Silicon / Metal
+├── arch-nvidia/start-qwable.sh        # Arch Linux / NVIDIA CUDA (generic)
+├── arch-nvidia-3060/                  # 12 GB RTX 3060 — MoE expert offload to RAM
+└── nvidia-3090/                       # 24 GB RTX 3090 — one script per model:
+    ├── start-qwen3-coder.sh           #   Qwen3-Coder-30B-A3B MoE (alias qwen3-coder, verified)
+    ├── start-gemma4-26b.sh            #   Gemma-4-26B-A4B MoE     (alias gemma4-26b, best quality)
+    ├── start-gemma4-31b.sh            #   Gemma-4-31B + E2B draft (alias gemma4-31b, dense spec-decode)
+    └── start-qwable.sh                #   Qwable-v1 baseline      (alias qwable)
 ```
 
-`opencode.json` is platform-independent (it points at `localhost` and lives at
-the same XDG path on both OSes), so it lives at the top of `config/`. Only the
-**start script** differs per platform — and only in its GPU backend and
-context/VRAM budget; the `llama-server` flags themselves are identical.
+The harness is **model-agnostic**. Each model has its **own opencode alias, its own
+GGUF dir, and its own start script** — point opencode at the alias of whichever
+server is currently bound to `:8080` (run ONE at a time). `opencode.json` is
+platform-independent (points at `localhost`, same XDG path everywhere) and lists the
+verified-working models; **every model needs a zero `cost` block** or opencode 1.x's
+cost-calc throws `DecimalError`. The full model-search (which models pass/fail and
+why) is in [../nvidia-3090-poc-summary.md](../nvidia-3090-poc-summary.md).
 
 ## Install / placement
 

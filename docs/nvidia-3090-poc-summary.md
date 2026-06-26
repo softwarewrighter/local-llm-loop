@@ -9,7 +9,7 @@ speculative decoding); it landed on a **Qwen3-Coder MoE run solo**, for concrete
 measured reasons documented below.
 
 - **Date:** 2026-06-25
-- **Winning model (all three roles):** `llamacpp/qwen-coder` =
+- **Winning model (all three roles):** `llamacpp/qwen3-coder` =
   **Qwen3-Coder-30B-A3B-Instruct Q4_K_M** (MoE, 30.5B total / **~3.3B active**),
   fully GPU-resident, **no draft** (speculative decoding is moot on A3B — see below)
 - **Host:** Arch Linux · **RTX 3090 24 GB** · llama.cpp CUDA build **b9728**
@@ -19,22 +19,23 @@ measured reasons documented below.
   [config/nvidia-3090/start-qwen3-coder.sh](config/nvidia-3090/start-qwen3-coder.sh))
 - **VRAM:** **~20.8 GB / 24 GB** (whole model + 32k KV in VRAM)
 - **Throughput:** decode **~156 tok/s**, prefill **~1540 tok/s** (single-stream)
-- **Command:** `MODEL=llamacpp/qwen-coder ./scripts/demo-orchestrate.sh`
+- **Command:** `MODEL=llamacpp/qwen3-coder ./scripts/demo-orchestrate.sh`
 - **Outcome:** **working, independently-verified Rust CLI**; loop ran all 6 steps
   to a natural completion (6× Continue, no fail-safe Stop). Wall-clock ~210 s.
+  (Reproduced live again 2026-06-26 via the per-model `llamacpp/qwen3-coder` alias.)
 
 ## ⚠️ Three different "Qwen" models were tested — don't conflate them
 
-The `qwen-coder` alias and the `/disk1/models/qwen-coder/` directory are overloaded
-(they hold several models). Three *distinct* Qwen-lineage models were evaluated,
-with **opposite outcomes** — the names differ by one token but the models are
-unrelated:
+Each model now has its **own opencode alias and its own dir** (the earlier catch-all
+`qwen-coder` alias / `/disk1/models/qwen-coder/` dir invited conflation and is gone).
+Three *distinct* Qwen-lineage models were evaluated, with **opposite outcomes** —
+the names differ by one token but the models are unrelated:
 
-| Model (exact) | Family | Coder? | Result |
-|---|---|:---:|---|
-| **Qwen2.5-Coder** 14B / 32B (dense) | Qwen **2.5** | yes | ❌ **FAILED** — wrong tool-call delimiter (`<tools>`), any quant |
-| **Qwen3-14B** (+ Qwen3-0.6B draft) | Qwen **3** *base* | **no** | ❌ **FAILED** — malformed JSON (trailing comma / unescaped quotes) |
-| **Qwen3-Coder-30B-A3B-Instruct** (MoE) | Qwen **3** *Coder* | yes | ✅ **SUCCEEDED** — completes loop, 3/3 tests (verified: GGUF `general.name = Qwen3-Coder-30B-A3B-Instruct`) |
+| Model (exact) | Family | Coder? | alias / dir | Result |
+|---|---|:---:|---|---|
+| **Qwen2.5-Coder** 14B / 32B (dense) | Qwen **2.5** | yes | `qwen25-coder` / `qwen25-coder/` | ❌ **FAILED** — wrong tool-call delimiter (`<tools>`), any quant |
+| **Qwen3-14B** (+ Qwen3-0.6B draft) | Qwen **3** *base* | **no** | `qwen3-14b` / `qwen3-14b/` | ❌ **FAILED** — malformed JSON (trailing comma / unescaped quotes) |
+| **Qwen3-Coder-30B-A3B-Instruct** (MoE) | Qwen **3** *Coder* | yes | `qwen3-coder` / `qwen3-coder-30b/` | ✅ **SUCCEEDED** — completes loop, 3/3 tests (verified: GGUF `general.name = Qwen3-Coder-30B-A3B-Instruct`) |
 
 So the **non-coder Qwen3-14B failed**, while the **Qwen3-*Coder*-30B-A3B succeeded**.
 The winning model below is the latter — the genuine MoE coder, not the base model.
@@ -181,22 +182,26 @@ These are stack-level gotchas, independent of the model choice:
    Qwen3-Coder), so any Qwen3 target pairs exactly with a Qwen3-0.6B draft — handy
    if you do want spec-decode on a dense Qwen3 target.
 5. **opencode 1.x needs a zero `cost` block per model** or its cost-calc throws
-   `DecimalError`. The `qwen-coder` entry carries `"cost": {"input":0,"output":0}`.
+   `DecimalError`. Every `llamacpp` model entry carries `"cost": {"input":0,"output":0}`.
 
 ## Reproduce
 
+Each model has its own start script (its own `--alias` + dir) under
+`docs/config/nvidia-3090/`; run ONE server at a time and point opencode at the
+matching alias.
+
 ```bash
 # 1. Start the winning config (Qwen3-Coder-30B-A3B, solo, GPU-resident):
-docs/config/nvidia-3090/start-qwen3-coder.sh          # -ngl 99, port 8080, alias qwen-coder
+docs/config/nvidia-3090/start-qwen3-coder.sh          # -ngl 99, port 8080, alias qwen3-coder
 
-# 2. opencode.json: llamacpp/qwen-coder at http://127.0.0.1:8080/v1,
+# 2. opencode.json: llamacpp/qwen3-coder at http://127.0.0.1:8080/v1,
 #    apiKey "local", zero "cost" block, limit.context 32768. Needs opencode >= 1.17.
 
 # 3. Run the loop:
-MODEL=llamacpp/qwen-coder ./scripts/demo-orchestrate.sh
+MODEL=llamacpp/qwen3-coder ./scripts/demo-orchestrate.sh
 
-# Spec-decode variants (dense targets) live in start-coder-specdecode.sh;
-# they work but are slower than the MoE solo here.
+# Other verified models: start-gemma4-26b.sh (alias gemma4-26b, best quality),
+# start-gemma4-31b.sh (alias gemma4-31b, the dense spec-decode pair), start-qwable.sh.
 ```
 
 ## Highest-value next steps

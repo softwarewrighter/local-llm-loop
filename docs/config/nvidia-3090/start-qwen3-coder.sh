@@ -18,11 +18,12 @@
 #   - SPEED: as an MoE with only ~3.3B active params (30.5B total), decode is
 #     ~156 t/s here — faster than any dense + speculative-decoding pair tried — so
 #     NO draft is needed (spec-decode gives no net gain on A3B MoE). That is why
-#     this is a solo run, not the start-coder-specdecode.sh draft-pair config.
+#     this is a solo run, not a draft pair.
 #
 # This is the QWEN3-CODER (solo MoE) script. Siblings in this dir:
-#   start-qwable.sh            — the baseline Qwable model (full-GPU-resident)
-#   start-coder-specdecode.sh  — dense target + draft, speculative decoding (slower)
+#   start-qwable.sh      — the baseline Qwable model (full-GPU-resident)
+#   start-gemma4-26b.sh  — Gemma-4-26B-A4B MoE (alias gemma4-26b, best quality)
+#   start-gemma4-31b.sh  — Gemma-4-31B + E2B draft, dense spec-decode (alias gemma4-31b)
 # Run ONE at a time — they all bind :8080. Point opencode at the matching alias.
 #
 # Requires: a CUDA llama-server (system /usr/bin/llama-server works), the NVIDIA
@@ -34,8 +35,8 @@ set -euo pipefail
 
 # ---- config (override via env) ---------------------------------------------
 LLAMA_SERVER="${LLAMA_SERVER:-/usr/bin/llama-server}"   # system CUDA build (b9728)
-MODEL="${MODEL:-/disk1/models/qwen-coder/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf}"  # ~18.6 GB MoE
-ALIAS="${ALIAS:-qwen-coder}"    # MUST match the opencode.json model key
+MODEL="${MODEL:-/disk1/models/qwen3-coder-30b/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf}"  # ~18.6 GB MoE
+ALIAS="${ALIAS:-qwen3-coder}"   # MUST match the opencode.json model key (llamacpp/qwen3-coder)
 HOST="${HOST:-127.0.0.1}"       # 0.0.0.0 only if a remote/Docker client needs it
 PORT="${PORT:-8080}"            # MUST match opencode.json baseURL port
 API_KEY="${API_KEY:-local}"     # MUST match opencode.json apiKey
