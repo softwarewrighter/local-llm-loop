@@ -19,7 +19,9 @@ code that passes `cargo test`), measured on an RTX 3090:
 |-------|-------|
 | **Gemma-4-26B-A4B-it** | MoE, best greeter quality (`Hello, X!`) — see [3090 POC](docs/nvidia-3090-poc-summary.md) |
 | **Qwen3-Coder-30B-A3B-Instruct** | MoE, fastest verified coder (~189 tok/s decode) |
-| **Gemma-4-31B-it + Gemma-4-E2B draft** | dense + speculative decoding (exact-vocab pair); slower, but the one verified dense spec-decode pair |
+| **Qwen3.6-35B-A3B-MTP** | MoE with built-in **MTP self-speculative decode** (85% accept, no separate draft) |
+| **Qwen3.6-27B** | dense; cleanest output structure (pure `lib.rs` + `main.rs`) |
+| **Gemma-4-31B-it + Gemma-4-E2B draft** | dense + speculative decoding (exact-vocab pair); the verified dense spec-decode pair |
 | **Qwable-v1 IQ4_XS** | the original baseline |
 
 A model needs two things to work here: **native tool-calling that llama.cpp
@@ -128,6 +130,8 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/arch-poc-summary.md](docs/arch-poc-summary.md) — annotated end-to-end proof-of-concept run (Arch Linux / NVIDIA RTX 3090, full GPU)
 - [docs/arch-nvidia-3060-poc-summary.md](docs/arch-nvidia-3060-poc-summary.md) — end-to-end run on a 12 GB RTX 3060 with MoE experts offloaded to system RAM
 - [docs/nvidia-3090-poc-summary.md](docs/nvidia-3090-poc-summary.md) — RTX 3090 fast-GPU-resident coder run (Qwen3-Coder-30B-A3B MoE); the model-search matrix + speculative-decoding findings
+- [docs/plan-rtx5060-16.md](docs/plan-rtx5060-16.md) — plan: testing small coders (±spec-decode) on a 16 GB RTX 5060 (Blackwell / FP4)
+- [docs/plan-rtx3060-12.md](docs/plan-rtx3060-12.md) — plan: testing small coders (±spec-decode) on a 12 GB RTX 3060 (Ampere + RAM offload)
 - [docs/performance-analysis.md](docs/performance-analysis.md) — throughput benchmarks: RTX 3090 vs RTX 3060 (CPU-offload) vs M1 Max
 - [docs/older-hardware.md](docs/older-hardware.md) — older 24 GB GPUs (Tesla M40 / K80) for an overnight batch fleet
 - [docs/fleet-strategy.md](docs/fleet-strategy.md) — deploying across heterogeneous nodes (GPU/CPU tiers, scheduling, power/$) for overnight batch runs

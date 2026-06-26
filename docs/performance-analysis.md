@@ -59,13 +59,21 @@ loop and produces an **independently-verified** Rust CLI (`cargo test` passes); 
 | Qwable-v1 IQ4_XS | MoE 35B-A3B | 18.9 GiB | ~3,605 t/s | ~158 t/s | ✅ | `Hello, X!` |
 | **Qwen3-Coder-30B-A3B** Q4_K_M | MoE 30B-A3B | 17.3 GiB | ~4,043 t/s | **~189 t/s** | ✅ | bare name |
 | **Gemma-4-26B-A4B** Q4_K_M | MoE 26B-A4B | 15.6 GiB | ~4,209 t/s | ~142 t/s | ✅ | **`Hello, X!`** ✦ |
+| **Qwen3.6-35B-A3B** UD-Q4_K_M | MoE 35B-A3B | 21.1 GiB | ~3,365 t/s | ~143 t/s (**MTP 85% accept**) | ✅ | `Hello, X!` |
 | **Gemma-4-31B** Q4_K_M (dense) | dense 31B | 17.4 GiB | ~1,217 t/s | ~36 t/s (→~46 w/ E2B draft) | ✅ | `Hello, X!` |
+| **Qwen3.6-27B** Q4_K_M (dense) | dense 27B | 15.7 GiB | ~1,320 t/s | ~41 t/s | ✅ | `Hello, X!` (best structure) |
 | gpt-oss-20b MXFP4 | MoE 21B-A3B | 11.3 GiB | **~5,652 t/s** | **~205 t/s** | ❌ | — (JSON ctrl-char) |
 | Granite-4.1-8B Q4_K_M | hybrid 8B | 5.0 GiB | — | ~111 t/s | ❌ | — (invalid JSON) |
 
 ✦ Gemma-4-26B-A4B produced the highest-quality greeter — the proper `Hello, {name}!`
 form with correct `--times 0` error handling — while Qwen3-Coder emitted the bare
-repeated name. **The four ✅ models are the verified-working set on this box.**
+repeated name. **The six ✅ models are the verified-working set on this box.**
+
+**MTP (multi-token prediction)** is the cleanest spec-decode seen: Qwen3.6-35B-A3B-MTP
+self-speculates from a built-in head (`--spec-type draft-mtp`, *no separate draft
+model*) at **85% acceptance** vs 44–55% for the external-draft pairs. It's the
+preferred speedup mechanism on the bandwidth-limited boxes (3060, M1 Max) where
+decode is the bottleneck.
 
 Note the **dense vs MoE decode gap**: Gemma-4-**31B dense** decodes at ~36 t/s (all
 30.7B params active per token), ~4–5× slower than the ~3–4B-active MoEs — exactly

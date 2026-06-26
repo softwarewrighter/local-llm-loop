@@ -81,26 +81,37 @@ parseable JSON?** (the harness uses `serde_json`).
 | **Qwen3-Coder-30B-A3B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified** |
 | **Gemma-4-26B-A4B Q4 (solo)** | n/a (MoE) | ✅ **native** | ✅ **clean** | ✅ **completes, verified — best code** |
 | **Gemma-4-31B Q4 + E2B Q4 draft** | ✅ 36→46 t/s, 44% accept | ✅ native | ✅ clean | ✅ **completes, verified** (slow; flaky path 1/2) |
+| **Qwen3.6-27B Q4 (dense, solo)** | n/a | ✅ **native** | ✅ **clean** | ✅ **completes, verified — best lib/bin structure** |
+| **Qwen3.6-35B-A3B Q4 + MTP** | ✅ **`draft-mtp`, 85% accept** | ✅ native | ✅ clean | ✅ **completes, verified** (dynamic Skip/Continue) |
 | gpt-oss-20b MXFP4 (solo) | n/a (MoE) | ✅ native | ❌ literal control char in JSON | plan parse fails |
 | Granite-4.1-8B Q4 (solo) | n/a | ✅ native | ❌ invalid JSON + wrong path | plan parse fails |
 
 ### Verified-working set (besides Qwable)
 
-Four models (incl. Qwable) complete the loop and produce independently-verified
-code on this box — across three vendors, one a dense spec-decode pair:
+Six models (incl. Qwable) complete the loop and produce independently-verified
+code on this box — across three vendors, covering MoE-solo, dense, dense+draft
+spec-decode, and MoE+MTP self-speculative configs:
 
-| Model | Arch | Decode | Greeter result |
+| Model | Arch | Decode (tg128) | Greeter result |
 |---|---|---|---|
 | **Gemma-4-26B-A4B** | MoE solo | ~142 t/s | 2/2 tests; `Hello, X!` (best quality) |
 | **Qwen3-Coder-30B-A3B** | MoE solo | ~189 t/s | 3/3 tests; bare name |
+| **Qwen3.6-35B-A3B + MTP** | MoE + self-spec (MTP) | ~143 base, **85% MTP accept** | 2/2 tests; `Hello, X!`; dynamic Skip/Continue |
+| **Qwen3.6-27B** | dense solo | ~41 t/s | 2/2 tests; `Hello, X!`; **best lib/bin structure** |
 | **Gemma-4-31B + E2B** | dense + spec-decode | 36→~46 t/s | 2/2 tests; `Hello, X!`; richest review (Continue/Insert/Skip) |
 | Qwable-v1 (baseline) | MoE solo | ~158 t/s | (prior POCs) |
 
-**Gemma-4-31B + E2B** is the working **dense speculative-decoding coding pair**
-(exact 262144 vocab match; `--spec-type draft-simple`; ~1.3× over solo). It runs at
-ctx 16384 to fit the draft in 24 GB. Two caveats: it's **slow** (dense → ~12-min
-loop) and showed a **flaky path bug** (1 of 2 runs wrote an absolute `/.bootstrap/`
-path that opencode auto-rejected; the retry succeeded).
+Notes on the spec-decode variants:
+- **Gemma-4-31B + E2B** — working **dense draft-pair** (exact 262144 vocab,
+  `--spec-type draft-simple`, ~1.3× over solo, ctx 16384 to fit 24 GB). Slow (dense)
+  and showed a flaky absolute-`/.bootstrap/`-path bug (1/2 runs; retry succeeded).
+- **Qwen3.6-35B-A3B-MTP** — **self-speculative via the model's built-in MTP head**
+  (`--spec-type draft-mtp`, no separate draft), **85% acceptance** — cleaner than a
+  draft pair. Fits fully at ~21 GB (base tg128 ~143); the 88.7 t/s server figure was
+  with conservative `--n-cpu-moe 8` offload, so a fully-resident MTP re-bench is a
+  follow-up.
+- **Qwen3.6-27B** (dense) produced the cleanest structure — pure `greet()` + tests
+  in `src/lib.rs`, CLI in `src/main.rs` — but is slow (~41 t/s dense).
 
 Three candidates clear tool-calling but **fail the clean-JSON gate**, so they don't
 complete the loop today:
