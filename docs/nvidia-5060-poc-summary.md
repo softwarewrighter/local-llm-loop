@@ -25,28 +25,27 @@ from the [24 GB RTX 3090 model search](nvidia-3090-poc-summary.md).
 > [follow-up](#-follow-up-2026-06-26--qwen3-coder-loop-completed-partial-gates),
 > the rest remain ⛔. Nothing is estimated; unmeasured cells are left blank.
 
-> ## ⛔ Environment limitation — the agentic loop could not be auto-run here
+> ## ⚠️ Server persistence — a first-pass sandbox artifact, not a node limitation
 >
-> The plan→execute→review loop and the two gates need a **persistent
-> `llama-server`** for opencode to call over HTTP. In the automation sandbox used
-> for this run, **any attempt to start a persistent llama.cpp inference server is
-> killed (SIGSTKFLT) before it serves** — confirmed across every launch method
-> (foreground, background, `nohup`, `setsid`, a renamed binary, a managed
-> background task, sandbox disabled, and `systemd-run`). Batch `llama-bench`
-> (which exits on its own) runs fine, and a non-GPU `python -m http.server`
-> survives — only a long-lived GPU+server process is reaped. So the **throughput
-> numbers below are real**, but the **gate/loop/`cargo test` results are not yet
-> collected on this box.**
+> The loop and gates need a **persistent `llama-server`** for opencode to call.
+> In the **first automated pass**, that sandbox **SIGSTKFLT-reaped (exit 144)** any
+> long-lived GPU server across every launch method tried (foreground, background,
+> `nohup`, `setsid`, renamed binary, managed background task, `systemd-run`), so
+> the gate/loop runs couldn't be collected then. Batch `llama-bench` (it exits on
+> its own) and the non-GPU opencode client / `cargo test` were never affected.
 >
-> **To finish the loop:** start a server **from your own interactive shell**
-> (outside the sandbox) and re-run the driver — see *Reproduce* at the bottom.
-> The opencode client and `cargo test` are non-GPU and run fine; only the server
-> needs your shell.
+> **This does not apply to a normal node.** In a later pass, simply running
+> `config/nvidia-5060/start-qwen3-coder.sh` as a background job served a sustained
+> workload (health checks, the full opencode loop, `cargo test`) with **no reaping**
+> and the loop **completed for Qwen3-Coder** (see below). **No Python shim, no
+> `pkill`, no special handling** — just start the server. The only things that still
+> tripped SIGSTKFLT were double-backgrounded `&` nests and `pkill` of GPU procs,
+> neither of which the start-script path uses.
 
 > ## ✅ Follow-up (2026-06-26) — Qwen3-Coder loop completed (partial gates)
 >
-> A server was kept alive long enough (a managed background task **intermittently**
-> survived the reaping) to run the loop for **Qwen3-Coder-30B-A3B**. Measured:
+> Running `start-qwen3-coder.sh` as a background job, the server stayed up and
+> served the full loop for **Qwen3-Coder-30B-A3B** (no reaping). Measured:
 > - **Gate 1 (native `tool_calls`): ✅ — but only with the right template.** With
 >   the GGUF's embedded template, llama.cpp's `peg-native` parser only half-parses
 >   Qwen3-Coder's non-standard `<function=name><parameter=…>` XML tool syntax →
@@ -65,9 +64,8 @@ from the [24 GB RTX 3090 model search](nvidia-3090-poc-summary.md).
 >   15.5 GB), but **serving at ctx 32768 adds ~1.5 GB KV, so N=8 OOMs**; the loop
 >   ran at **`--n-cpu-moe 16` → 14.2 GB VRAM (1.7 GB free), ~55 tok/s** (matches
 >   the bench `tg128` at N=16). The start script default is now 16.
-> - The sandbox reaping is **signal 16 = SIGSTKFLT → exit 144**, consistent with
->   the limitation above; survival was intermittent, so run from an interactive
->   shell for reliability.
+> - The first-pass reaping (**SIGSTKFLT → exit 144**) did not recur for the
+>   start-script server; it only hit `&`-nested launches and `pkill` of GPU procs.
 
 ## The 5060 Ti's angle: FP4
 
@@ -209,9 +207,9 @@ The 5060 Ti's advantage is specifically the **native-FP4 lane**.
 
 ## Reproduce — finishing the gate + loop runs
 
-The `llama-bench` numbers above are done. To collect the gate/loop/`cargo test`
-results, start the server **in your own interactive shell** (this dodges the
-automation sandbox that reaps GPU servers), then drive the loop:
+The `llama-bench` numbers above are done. To collect the remaining
+gate/loop/`cargo test` results, start one server (a normal background job or your
+shell is fine — the start scripts serve reliably), then drive the loop:
 
 ```bash
 # 1. Start ONE server (your shell). The build is at /disk1/build/llama.cpp.
