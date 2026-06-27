@@ -70,22 +70,23 @@ fn append_write_json(p: &mut String, role: &str, out_path: &str, schema: &str) {
     p.push('\n');
     let _ = write!(
         p,
-        "Now save and CHECK it with our command-line helper — a tool named \
-         `bootstrap` on your PATH that you run from the shell (the same way you run \
-         `cargo` or `ls`):\n\
+        "Deliver it with our command-line helper `bootstrap` (a tool on your PATH, run \
+         from the shell like `cargo` or `ls`).\n\
          \n\
-         1. Write the JSON to the file `{out_path}` (relative to the project directory).\n\
-         2. Run this shell command:\n\
+         WORKED EXAMPLE — copy this exact sequence of ACTIONS (not the content):\n\
+         \x20  • write the JSON object to the file `{out_path}` (relative to the project dir)\n\
+         \x20  • run the shell command:   bootstrap emit {role} --file {out_path}\n\
+         \x20  • it replies:              OK: {role} envelope valid — …\n\
+         \x20  • you reply with just:     DONE\n\
+         If instead it replies `Error: …`, it names the one thing that is wrong: edit \
+         `{out_path}` to fix exactly that and run the SAME command again until it says OK.\n\
          \n\
-         \x20      bootstrap emit {role} --file {out_path}\n\
-         \n\
-         3. It prints a line starting with `OK:` when the JSON is valid (and rewrites\n\
-         \x20  the file cleanly). If it prints `Error: …` instead, it tells you exactly\n\
-         \x20  what is wrong — fix `{out_path}` and run the command again until it says OK.\n\
-         \n\
-         Do NOT use any todo, task, or plan-list tools. Your ONLY deliverable is the\n\
-         file `{out_path}` passing `bootstrap emit {role}`. When it prints OK, reply\n\
-         with just: DONE\n"
+         RULES (this is where weaker models fail — do not repeat these mistakes):\n\
+         \x20  • the file is the BARE object — do NOT wrap it, e.g. NOT {{\"content\": \"{{…}}\"}}\n\
+         \x20  • write EXACTLY ONE object — no second JSON object, no prose around it\n\
+         \x20  • do NOT use task / sub-agent / todo tools, and do NOT inspect the helper\n\
+         \x20    (no `bootstrap --version`) — just write the file and run the command above\n\
+         Your ONLY deliverable is `{out_path}` passing `bootstrap emit {role}`. Reply DONE only after OK.\n"
     );
 }
 
