@@ -1,11 +1,49 @@
 # Plan — small-coder testing on an RTX 5060-16G node
 
 How to test **small coding models for this harness** on an **RTX 5060 16 GB**
-node, **with and without speculative decoding**. This is a *plan* (not yet run);
-it reuses the method and hard-won rules from the 24 GB RTX 3090 work — see
-[nvidia-3090-poc-summary.md](nvidia-3090-poc-summary.md) (the model-search matrix
-and the two gates), [performance-analysis.md](performance-analysis.md), and
+node, **with and without speculative decoding**. This plan is now **partially
+executed** — measured results are in
+[nvidia-5060-poc-summary.md](nvidia-5060-poc-summary.md); see *Status & next
+steps* below. It reuses the method and hard-won rules from the 24 GB RTX 3090
+work — see [nvidia-3090-poc-summary.md](nvidia-3090-poc-summary.md) (the
+model-search matrix and the two gates),
+[performance-analysis.md](performance-analysis.md), and
 [config/nvidia-3090/](config/nvidia-3090/) for the start-script templates to copy.
+
+## Status & next steps (2026-06-26)
+
+**Done** (see [nvidia-5060-poc-summary.md](nvidia-5060-poc-summary.md)):
+- sm_120 llama.cpp build; `llama-bench` matrix across the four resident candidates.
+- **FP4 question answered:** native MXFP4 prefill on gpt-oss-20b **beats the 3090**
+  (5,920 vs ~5,652 t/s `pp512`); decode 0.67× (bandwidth-bound). FP4 only helps
+  FP4 models — the K-quant coders see none of it.
+- **Qwen3-Coder-30B-A3B:** gate 1 (native `tool_calls`) ✅ and a full `opencode run`
+  loop ✅ (`cargo test` green), serving at `--n-cpu-moe 16` (14.2 GB, ~55 tok/s).
+
+**Key learning — tool-call templates are per-model and gate-1-critical.**
+Qwen3-Coder needed `--chat-template-file Qwen3-Coder.jinja`; without it llama.cpp's
+generic `peg-native` parser only half-parses its `<function=…>` XML tool syntax and
+the calls **leak as assistant text** (gate-1 fail). **Check every new model** for
+the same — treat "tools leak as text" as a template problem, not a model failure.
+gpt-oss has `openai-gpt-oss-120b.jinja`; Phi-4 may need its own.
+
+**Next steps, ordered:**
+1. **Close qwen3-coder gate 2** — run the harness's own
+   `scripts/demo-orchestrate.sh` (strict-JSON plan/step/review envelopes) from an
+   **interactive shell** (dodges the SIGSTKFLT → exit-144 server reaping seen in
+   the sandbox), then independently `cargo test`.
+2. **Gate-test the other three resident models** — phi-4, gpt-oss-20b, qwen3-8b:
+   native `tool_calls` (with the correct template) + strict JSON. gpt-oss failed
+   gate 2 on the 3090 (control char) — see if a template/quant change fixes it.
+3. **Spec-decode A/B (qwen3-8b)** — solo vs + Qwen3-0.6B draft
+   (`--spec-type draft-simple`, exact 151936 vocab): decode tok/s + draft acceptance.
+4. **Push borderline models over gate 2** with higher-precision quants
+   (Q5_K_M / Q8 / UD-Q4_K_XL) — the cheapest lever; relevant for phi-4 / gpt-oss.
+5. **Queued larger models** (via `config/nvidia-5060/download-models.sh`):
+   Qwen3.6-27B, Gemma-3-27B-it, DeepSeek-Coder-V2-Lite-16B, Qwen3-32B (needs offload).
+6. **Server persistence** — always launch from an interactive shell, or investigate
+   the sandbox SIGSTKFLT reaping, so the loop can be automated end-to-end.
+7. **Energy/task at ~145 W** — measure perf/W vs the 3090/3060.
 
 ## Hardware profile
 

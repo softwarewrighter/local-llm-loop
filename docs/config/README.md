@@ -13,6 +13,7 @@ docs/config/
 ├── mac/start-qwable.sh                # Apple Silicon / Metal
 ├── arch-nvidia/start-qwable.sh        # Arch Linux / NVIDIA CUDA (generic)
 ├── arch-nvidia-3060/                  # 12 GB RTX 3060 — MoE expert offload to RAM
+├── nvidia-5060/                       # 16 GB RTX 5060 Ti — Blackwell/FP4 (sm_120); measured llama-bench
 └── nvidia-3090/                       # 24 GB RTX 3090 — one script per model:
     ├── start-qwen3-coder.sh           #   Qwen3-Coder-30B-A3B MoE (alias qwen3-coder, verified)
     ├── start-gemma4-26b.sh            #   Gemma-4-26B-A4B MoE     (alias gemma4-26b, best quality)
