@@ -190,18 +190,49 @@ const PLAN_OUT: &str = "plan.llm.json";
 ///      work dir;
 ///   3. the reply text itself (the model answered inline instead of writing).
 /// Stale files are removed first so a failed call can't read an old answer.
-fn capture_json(llm: &Llm, work_dir: &Path, rel_out: &str, prompt: &str, label: &str) -> Result<String> {
-    let abs = work_dir.join(rel_out);
-    let _ = std::fs::remove_file(&abs);
-    let stdout = llm.run(prompt, label)?;
+/// Max envelope attempts per role: the first try plus in-context-RL retries.
+const MAX_ENVELOPE_TRIES: usize = 3;
 
-    if let Some(s) = read_nonempty(&abs) {
-        return Ok(s);
+/// Run one opencode call, resolve the envelope text, and validate it with
+/// `check` (the role's parser = the reward signal). On failure, **re-prompt with
+/// the precise error fed back** so the model corrects its next attempt — in-
+/// context reinforcement learning, no weight updates (see
+/// docs/nvidia-5060-poc-summary.md / the ICL+ICRL rationale). Always returns the
+/// best text after the attempts; the caller still parses it, so a final failure
+/// degrades exactly as before.
+fn capture_json(
+    llm: &Llm,
+    work_dir: &Path,
+    rel_out: &str,
+    role: &str,
+    base_prompt: &str,
+    label: &str,
+    check: impl Fn(&str) -> Result<()>,
+) -> Result<String> {
+    let abs = work_dir.join(rel_out);
+    let mut prompt = std::borrow::Cow::Borrowed(base_prompt);
+    let mut text = String::new();
+    for attempt in 1..=MAX_ENVELOPE_TRIES {
+        let _ = std::fs::remove_file(&abs);
+        let stdout = llm.run(&prompt, &format!("{label} try {attempt}/{MAX_ENVELOPE_TRIES}"))?;
+        text = read_nonempty(&abs)
+            .or_else(|| recover_written_file(work_dir, rel_out, &stdout))
+            .unwrap_or(stdout);
+        match check(&text) {
+            Ok(()) => break,
+            Err(e) if attempt < MAX_ENVELOPE_TRIES => {
+                prompt = std::borrow::Cow::Owned(format!(
+                    "{base_prompt}\n\n--- YOUR PREVIOUS ATTEMPT WAS REJECTED ---\n{}\n\
+                     Fix exactly that problem. Write the corrected single JSON object to \
+                     `{rel_out}` (overwrite it), then run `bootstrap emit {role} --file {rel_out}` \
+                     again. One bare object only — no wrapper, no second object, no task/todo tools.",
+                    llm::truncate(&e.to_string(), 400),
+                ));
+            }
+            Err(_) => break, // retries exhausted: return best effort, caller degrades
+        }
     }
-    if let Some(s) = recover_written_file(work_dir, rel_out, &stdout) {
-        return Ok(s);
-    }
-    Ok(stdout)
+    Ok(text)
 }
 
 fn read_nonempty(path: &Path) -> Option<String> {
@@ -252,7 +283,15 @@ fn referenced_paths(text: &str, basename: &str) -> Vec<String> {
 }
 
 fn plan(llm: &Llm, work_dir: &Path, spec: &str) -> Result<Plan> {
-    let out = capture_json(llm, work_dir, PLAN_OUT, &prompts::plan_prompt(spec, PLAN_OUT), "plan")?;
+    let out = capture_json(
+        llm,
+        work_dir,
+        PLAN_OUT,
+        "plan",
+        &prompts::plan_prompt(spec, PLAN_OUT),
+        "plan",
+        |t| llm::parse_json::<Plan>(t, prompts::PLAN_START, prompts::PLAN_END).map(|_: Plan| ()),
+    )?;
     llm::parse_json::<Plan>(&out, prompts::PLAN_START, prompts::PLAN_END)
         .context("planner did not return a valid plan")
 }
@@ -272,8 +311,14 @@ fn execute(
         llm,
         work_dir,
         &rel_out,
+        "step",
         &prompts::step_prompt(spec, design, history, step, &rel_out),
         &format!("step {}", step.id),
+        |t| {
+            llm::extract_json(t, prompts::STEP_START, prompts::STEP_END)
+                .and_then(|j| serde_json::from_str::<StepResult>(&j).map_err(anyhow::Error::from))
+                .map(|_| ())
+        },
     )?;
     match llm::extract_json(&out, prompts::STEP_START, prompts::STEP_END) {
         Ok(json) => {
@@ -312,8 +357,10 @@ fn review(
         llm,
         work_dir,
         &rel_out,
+        "review",
         &prompts::review_prompt(spec, design, step, result_json, remaining, &rel_out),
         &format!("review {}", step.id),
+        |t| llm::parse_json::<ReviewDecision>(t, prompts::REVIEW_START, prompts::REVIEW_END).map(|_: ReviewDecision| ()),
     )?;
     match llm::parse_json::<ReviewDecision>(&out, prompts::REVIEW_START, prompts::REVIEW_END) {
         Ok(d) => Ok(d),
