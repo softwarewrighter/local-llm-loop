@@ -174,23 +174,81 @@ fn load_state(path: &Path) -> Result<LoopState> {
     serde_json::from_str(&s).with_context(|| format!("failed to parse saved state {}", path.display()))
 }
 
-/// Relative path (under the work dir) where each role is told to write its JSON.
-const PLAN_OUT: &str = ".bootstrap/plan.llm.json";
+/// Bare in-dir filename each role is told to write its JSON to. A `.dotdir/`
+/// prefix made some models (Qwen3-Coder) rewrite it to an un-writable absolute
+/// path (`/bootstrap/…`), which opencode then rejected; a bare name avoids that.
+const PLAN_OUT: &str = "plan.llm.json";
 
 /// Run one stateless `opencode` call whose JSON answer is delivered via a file.
 ///
 /// Modern opencode is agentic and reliably *writes a file* rather than printing
-/// JSON, so we point it at `rel_out` and read that back. We delete any stale file
-/// first (so a failed call can't read an old answer) and fall back to scraping
-/// stdout if the model answered inline instead of writing the file.
+/// JSON, so we point it at `rel_out` and read it back. Resolution is robust, in
+/// priority order:
+///   1. the file at the path we asked for;
+///   2. a file the reply *points to or implies* — a path it named (even an
+///      absolute one it invented), or the same basename written elsewhere in the
+///      work dir;
+///   3. the reply text itself (the model answered inline instead of writing).
+/// Stale files are removed first so a failed call can't read an old answer.
 fn capture_json(llm: &Llm, work_dir: &Path, rel_out: &str, prompt: &str, label: &str) -> Result<String> {
     let abs = work_dir.join(rel_out);
     let _ = std::fs::remove_file(&abs);
     let stdout = llm.run(prompt, label)?;
-    match std::fs::read_to_string(&abs) {
-        Ok(s) if !s.trim().is_empty() => Ok(s),
-        _ => Ok(stdout),
+
+    if let Some(s) = read_nonempty(&abs) {
+        return Ok(s);
     }
+    if let Some(s) = recover_written_file(work_dir, rel_out, &stdout) {
+        return Ok(s);
+    }
+    Ok(stdout)
+}
+
+fn read_nonempty(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().filter(|s| !s.trim().is_empty())
+}
+
+/// Recover JSON the model wrote to a file *other* than the one we asked for — it
+/// may have named a different path in its reply, or written the right basename
+/// to a different in-dir spot. Tries every path the reply references that ends
+/// in our basename (as-is, and re-rooted under the work dir to defang an
+/// absolute-path rewrite), then the basename at the work-dir root and `.bootstrap/`.
+fn recover_written_file(work_dir: &Path, rel_out: &str, stdout: &str) -> Option<String> {
+    let basename = Path::new(rel_out).file_name()?.to_str()?;
+    for path in referenced_paths(stdout, basename) {
+        if let Some(s) = read_nonempty(Path::new(&path)) {
+            return Some(s);
+        }
+        if let Some(s) = read_nonempty(&work_dir.join(path.trim_start_matches('/'))) {
+            return Some(s);
+        }
+    }
+    for dir in [work_dir.to_path_buf(), work_dir.join(".bootstrap")] {
+        if let Some(s) = read_nonempty(&dir.join(basename)) {
+            return Some(s);
+        }
+    }
+    None
+}
+
+/// Tokens in `text` that name a file ending in `basename` — either the bare
+/// basename, or a `/`-or-`\`-separated path ending in it (so a `Write
+/// /bootstrap/plan.llm.json` line yields `/bootstrap/plan.llm.json`, but
+/// `myplan.llm.json` is not mistaken for `plan.llm.json`).
+fn referenced_paths(text: &str, basename: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for tok in text.split(|c: char| c.is_whitespace() || matches!(c, '`' | '"' | '\'' | '(' | ')')) {
+        let tok = tok.trim_end_matches(|c| matches!(c, '.' | ',' | ':' | ';'));
+        let is_path = tok.len() > basename.len()
+            && tok.ends_with(basename)
+            && matches!(tok.as_bytes()[tok.len() - basename.len() - 1], b'/' | b'\\');
+        if tok == basename || is_path {
+            out.push(tok.to_string());
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn plan(llm: &Llm, work_dir: &Path, spec: &str) -> Result<Plan> {
@@ -209,7 +267,7 @@ fn execute(
     history: &[HistoryEntry],
     step: &Step,
 ) -> Result<(StepResult, String)> {
-    let rel_out = format!(".bootstrap/step-{:02}-result.llm.json", step.id);
+    let rel_out = format!("step-{:02}-result.llm.json", step.id);
     let out = capture_json(
         llm,
         work_dir,
@@ -249,7 +307,7 @@ fn review(
     result_json: &str,
     remaining: &[Step],
 ) -> Result<ReviewDecision> {
-    let rel_out = format!(".bootstrap/step-{:02}-review.llm.json", step.id);
+    let rel_out = format!("step-{:02}-review.llm.json", step.id);
     let out = capture_json(
         llm,
         work_dir,
@@ -304,5 +362,35 @@ fn summarize(history: &[HistoryEntry]) {
     for h in history {
         let (s, r) = (&h.step, &h.result);
         println!("  [{}] {} → {}", s.id, s.title, if r.status.is_empty() { "unknown" } else { &r.status });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn referenced_paths_finds_absolute_and_bare() {
+        // The exact opencode failure line names an absolute path.
+        let s = "! permission requested: external_directory (/bootstrap/*)\n\u{2717} Write /bootstrap/plan.llm.json failed";
+        assert_eq!(referenced_paths(s, "plan.llm.json"), vec!["/bootstrap/plan.llm.json"]);
+        // A bare mention is captured too.
+        assert_eq!(referenced_paths("wrote plan.llm.json done", "plan.llm.json"), vec!["plan.llm.json"]);
+    }
+
+    #[test]
+    fn referenced_paths_ignores_basename_suffix_of_another_name() {
+        // `myplan.llm.json` must NOT match basename `plan.llm.json`.
+        assert!(referenced_paths("saved to myplan.llm.json", "plan.llm.json").is_empty());
+    }
+
+    #[test]
+    fn recover_reads_file_at_workdir_root() {
+        let dir = std::env::temp_dir().join(format!("orch-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("plan.llm.json"), r#"{"design":"d","steps":[]}"#).unwrap();
+        let got = recover_written_file(&dir, "plan.llm.json", "(no path mentioned)");
+        assert_eq!(got.as_deref(), Some(r#"{"design":"d","steps":[]}"#));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

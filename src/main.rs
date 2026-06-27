@@ -1,3 +1,4 @@
+mod emit;
 mod llm;
 mod orchestrate;
 mod prompts;
@@ -22,6 +23,9 @@ enum Commands {
     Orchestrate(OrchestrateArgs),
     /// Run an explicit list of tasks, one opencode call per task
     Exec(ExecArgs),
+    /// Validate (and canonicalize) a JSON envelope a model wrote — the helper
+    /// the prompts tell each role to call from the shell after writing its JSON.
+    Emit(EmitArgs),
 }
 
 #[derive(Args, Debug)]
@@ -75,6 +79,15 @@ struct ExecArgs {
     verbose: bool,
 }
 
+#[derive(Args, Debug)]
+struct EmitArgs {
+    /// Which envelope to validate: plan | step | review
+    role: String,
+    /// The JSON file the model wrote (validated and rewritten in place)
+    #[arg(long)]
+    file: PathBuf,
+}
+
 fn main() -> Result<()> {
     match Cli::parse().command {
         Commands::Orchestrate(args) => orchestrate::run(&orchestrate::Options {
@@ -87,6 +100,7 @@ fn main() -> Result<()> {
             verbose: args.verbose,
         }),
         Commands::Exec(args) => run_tasks(&args),
+        Commands::Emit(args) => emit::run(&args.role, &args.file),
     }
 }
 
