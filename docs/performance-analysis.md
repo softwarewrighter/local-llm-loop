@@ -1,4 +1,4 @@
-# Performance Analysis — Qwable-v1 IQ4_XS, RTX 3090 vs RTX 3060 vs M1 Max vs P40
+# Performance Analysis — RTX 3090 vs RTX 5060 Ti vs RTX 3060 vs M1 Max vs P40
 
 How fast the local model runs, and how the host platforms (Arch Linux / NVIDIA
 RTX 3090, Arch Linux / NVIDIA RTX 3060 12 GB, and macOS / Apple Silicon M1 Max —
@@ -10,8 +10,11 @@ analysis.
 
 > **What's actually been run:** the project has been run end-to-end on **M1 Max**
 > (the macOS POC), **RTX 3090** (the Arch POC + `llama-bench`), and **RTX 3060
-> 12 GB** (the CPU-offload POC + `llama-bench`). It has **not** been tested on the
-> **P40** at all — that section is a pure prediction.
+> 12 GB** (the CPU-offload POC + `llama-bench`). The **RTX 5060 Ti 16 GB** has
+> **measured `llama-bench`** numbers (see its section + the
+> [5060 Ti POC](nvidia-5060-poc-summary.md)) but the agentic loop was **not**
+> auto-run there (the automation sandbox reaps persistent GPU servers). It has
+> **not** been tested on the **P40** at all — that section is a pure prediction.
 >
 > So: the **RTX 3090** and **RTX 3060** figures are controlled `llama-bench`
 > measurements; the **M1 Max** figures are derived from its POC run plus hardware
@@ -148,6 +151,67 @@ Host: Xeon E5-2697 v4 (2×18c, quad-channel DDR4 per socket), 503 GB RAM, CUDA 1
 > CPU is bad at). Same reason the [GLM-5.2](glm-models.md) plan attaches a GPU
 > mainly to help *prefill*.
 
+## Measured — RTX 5060 Ti 16 GB (Blackwell / FP4)
+
+The 16 GB **RTX 5060 Ti** (GB206 Blackwell, sm_120, 5th-gen tensor cores,
+~448 GB/s GDDR7) is **the FP4 box**: it executes **MXFP4 / NVFP4** matmuls
+*natively*, where Ampere/Ada upcast them. `llama-bench` with the project's serving
+flags (`-ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128`), llama.cpp `3fc4e10`,
+speculative decoding off. VRAM is the measured bench-time peak (weights + small KV).
+Full write-up: [nvidia-5060-poc-summary.md](nvidia-5060-poc-summary.md).
+
+| Model | Arch | Size | VRAM peak | Prefill `pp512` | Decode `tg128` | Fit |
+|-------|------|-----:|----------:|----------------:|---------------:|-----|
+| **gpt-oss-20b MXFP4** | MoE 21B-A3B | 11.27 GiB | 11.8 GB | **5,920 t/s** | **138 t/s** | whole (FP4) |
+| Qwen3-8B Q4_K_M | dense 8B | 4.68 GiB | 5.2 GB | 3,679 t/s | 81 t/s | whole |
+| Phi-4-14B Q4_K_M | dense 14B | 8.28 GiB | 8.9 GB | 2,033 t/s | 46 t/s | whole |
+| Qwen3-Coder-30B-A3B Q4_K_M | MoE 30B-A3B | 17.28 GiB | 15.5 GB | 874 t/s | 81 t/s | `--n-cpu-moe 8` (RAM offload) |
+
+> ⚠️ The **loop/gate** results are not yet collected on the 5060 Ti — the
+> automation environment kills any persistent `llama-server` (SIGSTKFLT) before it
+> can serve, while batch `llama-bench` runs fine. The throughput above is real;
+> run the loop from an interactive shell to finish the gates (see the POC summary).
+
+### The FP4 headline: native MXFP4 prefill beats the 3090
+
+Same gpt-oss-20b MXFP4 GGUF, 5060 Ti vs the much pricier 3090:
+
+| gpt-oss-20b MXFP4 | RTX 5060 Ti | RTX 3090 | ratio | bound by |
+|---|---:|---:|---:|---|
+| Prefill `pp512` | **5,920 t/s** | ~5,652 t/s | **1.05×** | compute (FP4 matmul) |
+| Decode `tg128` | 138 t/s | ~205 t/s | 0.67× | bandwidth |
+| Bandwidth | ~448 GB/s | ~936 GB/s | 0.48× | — |
+
+- **Prefill — the 5060 Ti wins.** Despite ~⅓ the FP16 tensor throughput and half
+  the bandwidth, it *edges out* the 3090 on this model because Blackwell runs the
+  MXFP4 matmuls natively while Ampere upcasts them first. Prefill is the
+  compute-bound regime agentic coding leans on hardest, so this matters.
+- **Decode — bandwidth still wins, but FP4 narrows it.** At 0.67× the 3090 the
+  5060 Ti beats its 0.48× bandwidth ratio: native FP4 means fewer effective bytes
+  per step. The 3090's 2× bandwidth only buys ~1.5× here.
+- **FP4 only helps FP4 models.** The K-quant coders get none of it:
+  Qwen3-Coder-30B-A3B **Q4_K_M** decodes 81 t/s here (and must offload experts to
+  RAM to fit 16 GB) vs ~189 t/s fully-resident on the 3090. For non-FP4 weights
+  the 5060 Ti is a bandwidth-and-offload story like the 3060, not a 3090 rival.
+
+### Qwen3-Coder-30B-A3B doesn't fit 16 GB — the `--n-cpu-moe` curve
+
+The Q4_K_M is 17.28 GiB, so experts spill to the 251 GB system RAM. Fewer offloaded
+layers = faster, until VRAM OOMs (**N=8 is the floor that fits**, 15.5/15.8 GB):
+
+| `--n-cpu-moe` | Prefill `pp512` | Decode `tg128` | Fits 16 GB? |
+|--------------:|----------------:|---------------:|:-----------:|
+| 8 | 874 t/s | 81 t/s | ✅ |
+| 12 | 662 t/s | 63 t/s | ✅ |
+| 16 | 550 t/s | 55 t/s | ✅ |
+| 24 | 401 t/s | 39 t/s | ✅ |
+| 4 | — | — | ❌ OOM |
+
+Same shape as the [3060's offload curve](#measured--rtx-3060-12-gb-cpu-expert-offload):
+decode survives offload (only ~3.3B active params per token), prefill takes the
+hit (RAM-resident experts compute on the CPU). The 5060 Ti's faster GDDR7 +
+Blackwell tensor cores keep both regimes well ahead of the 3060's Qwable numbers.
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor
@@ -160,14 +224,15 @@ hardware differently:
 
 ### Hardware
 
-| | RTX 3090 | RTX 3060 12 GB | M1 Max | Tesla P40 |
-|---|---|---|---|---|
-| Memory bandwidth | ~936 GB/s | ~360 GB/s (VRAM) + ~60–77 GB/s/socket (system RAM) | ~400 GB/s | ~346 GB/s |
-| FP16 **tensor-core** matmul | ~71–142 TFLOPS | ~51–102 TFLOPS (only for GPU-held layers) | — (no tensor cores) | — (no tensor cores) |
-| INT8 tensor (MMQ path) | ~284 TOPS | ~102 TOPS (GPU layers only) | — | ~47 TOPS (DP4A, no tensor cores) |
-| Native FP16 (non-matmul) | full | full | full | **1/64 rate (~0.18 TFLOPS) — effectively broken** |
-| Fits the 17.6 GiB model? | **yes** (24 GB) | **no** — experts offloaded to RAM | yes (unified) | yes (24 GB) |
-| Max KV cache (this model) | ~32k tokens (24 GB cap) | ~32k (12 GB, mostly model+experts) | full 128k (unified memory) | ~32k tokens (24 GB cap) |
+| | RTX 3090 | RTX 5060 Ti 16 GB | RTX 3060 12 GB | M1 Max | Tesla P40 |
+|---|---|---|---|---|---|
+| Memory bandwidth | ~936 GB/s | ~448 GB/s | ~360 GB/s (VRAM) + ~60–77 GB/s/socket (system RAM) | ~400 GB/s | ~346 GB/s |
+| Native FP4 (MXFP4/NVFP4) | upcast | **accelerated** (5th-gen TC) | upcast | upcast | upcast |
+| FP16 **tensor-core** matmul | ~71–142 TFLOPS | ~90 TFLOPS (5th-gen TC) | ~51–102 TFLOPS (only for GPU-held layers) | — (no tensor cores) | — (no tensor cores) |
+| INT8 tensor (MMQ path) | ~284 TOPS | ~180 TOPS | ~102 TOPS (GPU layers only) | — | ~47 TOPS (DP4A, no tensor cores) |
+| Native FP16 (non-matmul) | full | full | full | full | **1/64 rate (~0.18 TFLOPS) — effectively broken** |
+| Fits the 17.6 GiB model? | **yes** (24 GB) | **no** — 16 GB; light expert-offload (but the 11.3 GiB FP4 gpt-oss fits whole) | **no** — experts offloaded to RAM | yes (unified) | yes (24 GB) |
+| Max KV cache (this model) | ~32k tokens (24 GB cap) | ~32k (16 GB) | ~32k (12 GB, mostly model+experts) | full 128k (unified memory) | ~32k tokens (24 GB cap) |
 
 ## How the IQ4_XS quantization affects the comparison
 

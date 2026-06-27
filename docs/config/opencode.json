@@ -36,6 +36,27 @@
           "cost": { "input": 0, "output": 0 },
           "limit": { "context": 16384, "output": 4096 },
           "options": {}
+        },
+        "gptoss-20b": {
+          "name": "gpt-oss-20b MXFP4 (RTX 5060 Ti / Blackwell FP4 showcase)",
+          "tools": true,
+          "cost": { "input": 0, "output": 0 },
+          "limit": { "context": 32768, "output": 4096 },
+          "options": {}
+        },
+        "phi-4": {
+          "name": "Phi-4-14B dense (RTX 5060 Ti, fully resident)",
+          "tools": true,
+          "cost": { "input": 0, "output": 0 },
+          "limit": { "context": 32768, "output": 4096 },
+          "options": {}
+        },
+        "qwen3-8b": {
+          "name": "Qwen3-8B dense (RTX 5060 Ti; spec-decode w/ Qwen3-0.6B draft)",
+          "tools": true,
+          "cost": { "input": 0, "output": 0 },
+          "limit": { "context": 32768, "output": 4096 },
+          "options": {}
         }
       }
     }
