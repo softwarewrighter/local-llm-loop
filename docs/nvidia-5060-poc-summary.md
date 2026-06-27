@@ -21,9 +21,9 @@ from the [24 GB RTX 3090 model search](nvidia-3090-poc-summary.md).
 
 > **Numbers policy.** Every throughput/VRAM figure here is a **measured**
 > `llama-bench` value from this box. The **agentic-loop / gate** columns were
-> **⛔ not run** at first; the **Qwen3-Coder gate-1 + loop are now measured** in a
-> [follow-up](#-follow-up-2026-06-26--qwen3-coder-loop-completed-partial-gates),
-> the rest remain ⛔. Nothing is estimated; unmeasured cells are left blank.
+> **⛔ not run** at first; **all four downloaded models are now measured through
+> the full harness loop** — see [Results](#results--the-two-gates--loop-measured-via-demo-orchestratesh).
+> Nothing is estimated; unmeasured cells are left blank.
 
 > ## ⚠️ Server persistence — a first-pass sandbox artifact, not a node limitation
 >
@@ -57,9 +57,9 @@ from the [24 GB RTX 3090 model search](nvidia-3090-poc-summary.md).
 > - **Loop: ✅** via a direct `opencode run` ("implement SPEC.md, run cargo test
 >   until green") — opencode planned, wrote a Rust crate, ran `cargo test`; an
 >   independent re-run was **green (2/2)**.
-> - **Still ⛔:** the harness's own `demo-orchestrate.sh` and **gate 2 (strict-JSON
->   plan/step/review envelopes)** were not run here, and the other three models'
->   gates remain not run.
+> - **(Later closed.)** `demo-orchestrate.sh` + gate 2 were subsequently run for
+>   all four downloaded models — see [Results](#results--the-two-gates--loop-measured-via-demo-orchestratesh).
+>   Qwen3-Coder and gpt-oss-20b pass; qwen3-8b and phi-4 do not.
 > - **Serving fit ≠ bench fit.** `llama-bench` fits at `--n-cpu-moe 8` (peak
 >   15.5 GB), but **serving at ctx 32768 adds ~1.5 GB KV, so N=8 OOMs**; the loop
 >   ran at **`--n-cpu-moe 16` → 14.2 GB VRAM (1.7 GB free), ~55 tok/s** (matches
@@ -144,26 +144,32 @@ N=6 peaked 15,663 and N=4 OOM'd):
 | 24 | 24/48 | 401 | 39.2 | ✅ |
 | 4 | 44/48 | — | — | ❌ OOM |
 
-## Results — the two gates + loop (partially run; see follow-up)
+## Results — the two gates + loop (measured via `demo-orchestrate.sh`)
 
-Mostly blocked by the environment limitation above; the **Qwen3-Coder** row is
-now measured (see the [✅ follow-up](#-follow-up-2026-06-26--qwen3-coder-loop-completed-partial-gates)).
-For the unrun cells the **expectation** (priors from the
-[3090 model search](nvidia-3090-poc-summary.md)) is recorded so the loop can be
-run from an interactive shell and the result checked against it:
+All four downloaded models were run through the **full harness loop** (plan →
+execute → review, then an independent `cargo test`), 2026-06-27. **2 of 4
+complete the loop and produce a working, tested crate:**
 
-| Model | (1) native tool_calls | (2) strict JSON | Loop | Prior expectation |
-|-------|:---------------------:|:---------------:|:----:|-------------------|
-| Qwen3-Coder-30B-A3B | **✅** ¹ | ⛔ not run ² | **✅** ² | **Likely ✅** — the one model verified to clear both gates on the 3090 |
-| Phi-4-14B | ⛔ not run | ⛔ not run | ⛔ not run | Unknown — fits whole; 14B is on the strict-JSON borderline |
-| gpt-oss-20b MXFP4 | ⛔ not run | ⛔ not run | ⛔ not run | Tool-calls ✅ but **JSON ✗ on the 3090** (control char) → likely speed-only |
-| Qwen3-8B | ⛔ not run | ⛔ not run | ⛔ not run | Tool-calls ✅; **JSON ✗ likely** (Qwen3-14B already failed gate 2) |
+| Model | (1) native tool_calls | (2) strict JSON | Loop + `cargo test` | Notes |
+|-------|:---------------------:|:---------------:|:-------------------:|-------|
+| **Qwen3-Coder-30B-A3B** | ✅ ¹ | ✅ | ✅ **2/2 pass** | clean full loop; the reference working model |
+| **gpt-oss-20b MXFP4** | ✅ | ✅ ² | ✅ **2/2 pass** | **failed the JSON gate on the 3090** (control char) — rescued here by the `emit` self-correct helper ² |
+| Qwen3-8B | ✅ | ✗ | ✗ **0 pass** | step envelopes malformed (`expected ',' or '}'`, beyond relax); scattered files into two crates; reviewer rationalized the failures and kept saying *Continue* → **below the strict-JSON floor** |
+| Phi-4-14B | ✗ | — | — | **no native `tool_calls`** — it narrates ("you would typically run a command…"). Base Phi-4 isn't function-calling-tuned and llama.cpp has no Phi-4 template → gate-1 fail. The FC-tuned variant is **Phi-4-mini-instruct** (untested) |
 
-¹ Measured — but **only with `--chat-template-file Qwen3-Coder.jinja`**; the
-embedded template leaks tool calls as text (gate-1 fail). See the follow-up.
-² Loop measured via a direct `opencode run` (spec → crate → `cargo test` green,
-independently re-run). The harness's own `demo-orchestrate.sh` and its strict-JSON
-gate-2 envelopes were **not** exercised, so gate 2 stays ⛔.
+¹ Requires **`--chat-template-file Qwen3-Coder.jinja`** — the embedded template
+leaks tool calls as text (gate-1 fail). Wired into `start-qwen3-coder.sh`.
+² The harness's **`bootstrap emit <role> --file …`** helper validates each
+envelope against the schema and prints a correctable `Error:`; the role prompts
+tell the model to fix and retry until `OK:`. This **self-healing channel** is what
+lets gpt-oss-20b — a 3090 gate-2 failure — complete the loop. See
+[orchestrator.md](orchestrator.md) / the repo README for the helper.
+
+**Working set so far: 2 (`qwen3-coder`, `gpt-oss-20b`).** Both remaining
+downloaded candidates are out (qwen3-8b gate 2, phi-4 gate 1). The proven path to
+a 3rd is a large gate-2 clearer not yet pulled here — **Qwen3.6-27B** (16.8 GB,
+"best lib/bin structure" on the 3090) or a **Gemma 26–27B** — run with the same
+`--n-cpu-moe`-fit + per-model-template method.
 
 ## FP4 question — answered (measured)
 
