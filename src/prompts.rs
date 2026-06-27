@@ -51,23 +51,42 @@ const REVIEW_SCHEMA: &str = r#"{
   ]
 }"#;
 
-/// Append the "write the JSON to this file" instruction shared by every role.
+/// Append the "write the JSON to a file, then validate it with our helper"
+/// instruction shared by every role.
 ///
-/// We hand the JSON off via a file rather than stdout: modern opencode runs an
-/// agentic loop that prefers tool calls over inline prose, so a known output
-/// path is the reliable channel. The file ends up containing clean JSON (no
-/// reasoning preamble), and `out_path` is relative to opencode's `--dir`
-/// (the work dir).
-fn append_write_json(p: &mut String, out_path: &str, schema: &str) {
+/// We hand the JSON off via a file (opencode is agentic and prefers tool calls
+/// over inline prose, so a known output path is the reliable channel) AND have
+/// the model validate it with the `bootstrap emit` CLI helper. The helper checks
+/// the JSON against the harness's own schema and prints `OK:` or a correctable
+/// `Error:`, giving the model a self-healing loop — and the call doubles as a
+/// worked example of invoking a shell tool, which generalizes to others.
+fn append_write_json(p: &mut String, role: &str, out_path: &str, schema: &str) {
     let _ = write!(
         p,
-        "Write ONLY a single JSON object to the file `{out_path}` (relative to the \
-         project directory), overwriting any existing file. Do not wrap it in \
-         markdown fences — the file must contain nothing but the JSON, in this shape:\n"
+        "OUTPUT — produce a single JSON object in EXACTLY this shape (no markdown \
+         fences, no prose, nothing but the JSON):\n"
     );
     p.push_str(schema);
     p.push('\n');
-    let _ = write!(p, "After writing `{out_path}`, reply with just: DONE\n");
+    let _ = write!(
+        p,
+        "Now save and CHECK it with our command-line helper — a tool named \
+         `bootstrap` on your PATH that you run from the shell (the same way you run \
+         `cargo` or `ls`):\n\
+         \n\
+         1. Write the JSON to the file `{out_path}` (relative to the project directory).\n\
+         2. Run this shell command:\n\
+         \n\
+         \x20      bootstrap emit {role} --file {out_path}\n\
+         \n\
+         3. It prints a line starting with `OK:` when the JSON is valid (and rewrites\n\
+         \x20  the file cleanly). If it prints `Error: …` instead, it tells you exactly\n\
+         \x20  what is wrong — fix `{out_path}` and run the command again until it says OK.\n\
+         \n\
+         Do NOT use any todo, task, or plan-list tools. Your ONLY deliverable is the\n\
+         file `{out_path}` passing `bootstrap emit {role}`. When it prints OK, reply\n\
+         with just: DONE\n"
+    );
 }
 
 /// Planner: turn the spec into a design + ordered, serialized step list.
@@ -88,7 +107,7 @@ pub fn plan_prompt(spec: &str, out_path: &str) -> String {
          decision in the spec. Prefer 3-8 steps for a small project. Number steps \
          sequentially starting at 1.\n\n",
     );
-    append_write_json(&mut p, out_path, PLAN_SCHEMA);
+    append_write_json(&mut p, "plan", out_path, PLAN_SCHEMA);
     p
 }
 
@@ -132,7 +151,7 @@ pub fn step_prompt(spec: &str, design: &str, history: &[HistoryEntry], step: &St
         "\nDo the work now using your tools (read/write project files, run commands). \
          When the work is done, report what you did: ",
     );
-    append_write_json(&mut p, out_path, STEP_RESULT_SCHEMA);
+    append_write_json(&mut p, "step", out_path, STEP_RESULT_SCHEMA);
     p
 }
 
@@ -173,6 +192,6 @@ pub fn review_prompt(
          - \"stop\": something needs human intervention; halt the build.\n\n",
     );
     p.push_str("Use an empty \"new_steps\" list unless the action is \"insert\".\n");
-    append_write_json(&mut p, out_path, REVIEW_SCHEMA);
+    append_write_json(&mut p, "review", out_path, REVIEW_SCHEMA);
     p
 }

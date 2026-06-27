@@ -26,6 +26,10 @@ BIN=./target/release/bootstrap
 echo "[demo] building bootstrap (release)..."
 cargo build --release
 
+# Put `bootstrap` on PATH so the model can call `bootstrap emit …` (the JSON
+# validation helper) through opencode's shell tool. opencode inherits this env.
+export PATH="$(pwd)/target/release:${PATH}"
+
 WORKDIR="$(mktemp -d -t bootstrap-greeter.XXXXXX)"
 echo "[demo] build workspace: ${WORKDIR}"
 cp "${SPEC}" "${WORKDIR}/spec.txt"
