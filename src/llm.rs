@@ -27,6 +27,16 @@ impl Llm {
 
         let mut cmd = Command::new("opencode");
         cmd.arg("run").arg(prompt).arg("--model").arg(&self.model);
+        // Run under a restricted agent that disables opencode's task/todo tools.
+        // Reasoning/creative models (Qwythos, qwen3-8b) wander into `task`
+        // (sub-agent spawn) and `todowrite` instead of writing the envelope,
+        // which breaks the loop. The `envelope` agent (opencode.json) leaves
+        // file/shell tools enabled so coding still works. Override/disable with
+        // OPENCODE_AGENT (set empty to skip).
+        let agent = std::env::var("OPENCODE_AGENT").unwrap_or_else(|_| "envelope".to_string());
+        if !agent.is_empty() {
+            cmd.arg("--agent").arg(&agent);
+        }
         if let Some(dir) = &self.work_dir {
             cmd.arg("--dir").arg(dir);
         }
@@ -85,7 +95,14 @@ pub fn strip_ansi(s: &str) -> String {
 }
 
 /// Extract the JSON object from model output. Prefers content between the
-/// sentinels; falls back to the first `{` … last `}` span.
+/// sentinels; otherwise takes the FIRST complete brace-balanced object.
+///
+/// We scan from the first `{` to its matching `}` (tracking string literals so
+/// braces inside strings don't count) and return that one object — ignoring any
+/// trailing prose OR extra objects the model appended. The previous first-`{`…
+/// last-`}` span broke on models that emit two back-to-back envelopes (e.g. a
+/// reasoning model writing `{...}\n{...}`), which serde then rejects as trailing
+/// characters.
 pub fn extract_json(text: &str, start_sentinel: &str, end_sentinel: &str) -> Result<String> {
     let slice = match (text.find(start_sentinel), text.rfind(end_sentinel)) {
         (Some(s), Some(e)) if e > s + start_sentinel.len() => &text[s + start_sentinel.len()..e],
@@ -93,10 +110,39 @@ pub fn extract_json(text: &str, start_sentinel: &str, end_sentinel: &str) -> Res
     };
 
     let start = slice.find('{').context("no '{' found in LLM output")?;
-    let end = slice.rfind('}').context("no '}' found in LLM output")?;
-    if end < start {
-        bail!("malformed JSON braces in LLM output");
+    let bytes = slice.as_bytes();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut end = None;
+    // Only ASCII structural bytes are matched; UTF-8 continuation bytes (>= 0x80)
+    // never collide with them, so byte scanning is safe and stays on char
+    // boundaries (`start`/`end` land on `{`/`}`).
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+        } else {
+            match b {
+                b'"' => in_string = true,
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
     }
+    let end = end.context("no matching '}' for the first '{' in LLM output")?;
     Ok(slice[start..=end].to_string())
 }
 
@@ -252,5 +298,22 @@ mod tests {
         let raw = r#"prose {"design":"d","steps":[]} trailing"#;
         let plan: Plan = parse_json(raw, "<<<X>>>", "<<<Y>>>").unwrap();
         assert_eq!(plan, Plan { design: "d".into(), steps: vec![] });
+    }
+
+    #[test]
+    fn extract_takes_first_object_when_model_appends_a_second() {
+        // The exact Qwythos break: two back-to-back objects. Take the first;
+        // first-`{`..last-`}` would have spanned both → serde "trailing chars".
+        let raw = "{\"design\":\"a\",\"steps\":[]}\n{\"design\":\"b\",\"steps\":[]}";
+        assert_eq!(extract_json(raw, "<<<X>>>", "<<<Y>>>").unwrap(), "{\"design\":\"a\",\"steps\":[]}");
+        let plan: Plan = parse_json(raw, "<<<X>>>", "<<<Y>>>").unwrap();
+        assert_eq!(plan.design, "a");
+    }
+
+    #[test]
+    fn extract_ignores_braces_inside_strings_and_nests() {
+        let raw = r#"{"design":"use {curly} and \"quotes\"","steps":[{"id":1,"title":"t"}]} junk"#;
+        let got = extract_json(raw, "<<<X>>>", "<<<Y>>>").unwrap();
+        assert_eq!(got, r#"{"design":"use {curly} and \"quotes\"","steps":[{"id":1,"title":"t"}]}"#);
     }
 }
