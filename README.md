@@ -52,8 +52,12 @@ for each step (Rust owns the cursor + history):
 ```
 
 Rust owns all orchestration state; every LLM call is a stateless `opencode run`
-with the needed context passed in the prompt. Structured hand-offs use
-sentinel-delimited JSON that the harness extracts robustly. See
+with the needed context passed in the prompt. Each role writes its JSON envelope
+to a file and validates it with the **`bootstrap emit`** helper (a CLI on the
+model's `$PATH`), which checks it against the harness schema and returns a
+correctable error — making the envelope channel self-healing (see
+[`emit`](#emit--validate-a-json-envelope-the-model-facing-helper) below). The
+harness also extracts JSON robustly from whatever the model produces. See
 [docs/orchestrator.md](docs/orchestrator.md) for the full design and the
 annotated end-to-end runs ([macOS](docs/mac-poc-summary.md) ·
 [Arch/NVIDIA](docs/arch-poc-summary.md)).
@@ -77,7 +81,7 @@ cargo build --release
 
 ## Usage
 
-The binary has two subcommands.
+The binary has three subcommands.
 
 ### `orchestrate` — plan/execute/review from a spec file
 
@@ -107,6 +111,33 @@ bootstrap exec "create a test" "run the test" "validate the results" \
 
 Each task is a separate `opencode run`; by default they chain into one session
 (`--no-chain` to isolate them).
+
+### `emit` — validate a JSON envelope (the model-facing helper)
+
+```bash
+bootstrap emit <plan|step|review> --file path/to/envelope.json
+```
+
+A plain CLI helper (on `$PATH`, **not** MCP) that the **model** calls from
+opencode's shell tool. It validates the JSON the model just wrote against the
+harness's own schema, rewrites it canonically on success, and prints `OK:` or a
+precise, correctable `Error:` with the expected shape:
+
+```text
+$ bootstrap emit review --file step-02-review.llm.json
+Error: review envelope invalid: missing field `action` …
+expected shape:
+{"action":"continue|insert|skip|stop","reason":"...","new_steps":[]}
+```
+
+The role prompts tell each LLM to write its envelope to a file, run `emit`, fix
+on any `Error:`, and only reply `DONE` after `OK:`. This makes the envelope
+channel **self-healing** — a model that first emits a malformed or wrong-schema
+envelope (e.g. a `todowrite` list with no `action`) sees the error and corrects
+it instead of silently breaking the loop. It is what lets gpt-oss-20b (which
+failed the JSON gate on the 3090) complete the loop on the 5060. The worked
+shell invocation in the prompt also generalizes the model to calling other CLI
+tools. `emit` exits non-zero on failure, so the model's shell sees the error.
 
 ### Demo scripts
 
