@@ -1,5 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "envelope": {
+      "description": "Restricted agent for the orchestrate loop: file/shell tools only, no task/todo wandering",
+      "mode": "primary",
+      "tools": {
+        "task": false,
+        "todowrite": false,
+        "todoread": false
+      }
+    }
+  },
   "provider": {
     "llamacpp": {
       "npm": "@ai-sdk/openai-compatible",
