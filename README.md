@@ -34,6 +34,60 @@ delimiter), gpt-oss-20b and Granite-4.1-8B (JSON), Qwen3-14B (JSON). The
 > The binary and crate are named `bootstrap`; the git repository is
 > `local-llm-loop`.
 
+## How long does the loop take? — where the time goes
+
+Wall-clock for the same greeter spec (plan → code → review → repeat). The
+**per-phase numbers are measured on the M1 Max** (recovered from `.bootstrap/`
+artifact timestamps); the orchestrator doesn't log durations and the GPU POCs
+recorded **throughput, not phase timing**, so the cross-system table ranks by the
+measured throughput that *drives* wall-clock (see
+[performance-analysis.md](docs/performance-analysis.md)).
+
+**Per-phase wall-clock — M1 Max (measured):**
+
+| Phase | Qwen3.6-35B-A3B-MTP | gpt-oss-20b |
+|-------|--------------------:|------------:|
+| Model load → ready | ~4 s | ~4 s |
+| **Plan** (1 call) | 1m32s | 1m35s |
+| **Code** (per step, avg) | ~78 s | ~36 s |
+| **Review** (per step, avg) | ~51 s | ~24 s |
+| Retries / self-heals | **0** | 6 retries + 1 `emit` fix |
+| **Total loop** | **8m01s** (3 steps) | **3m34s** (2 steps) |
+
+**Cross-system ranking (by measured throughput — the wall-clock driver):**
+
+| Target system | gpt-oss-20b decode / prefill | Qwen3.6-35B decode / prefill | Loop speed rank |
+|---------------|------------------------------:|------------------------------:|:---------------:|
+| **RTX 3090** (24 GB) | ~205 / ~5,652 t/s | ~143 / ~3,365 t/s (MTP) | 🥇 fastest |
+| **RTX 5060 Ti** (16 GB) | 138 / 5,920 t/s | — | 🥈 |
+| **M1 Max** (64 GB) | 76 / 998 t/s | 57 / 827 t/s (MTP) | 🥉 (but holds any model whole) |
+
+**Where the time actually goes (per model / hardware):**
+
+- **Model load is not the bottleneck** — on the M1 Max both the 21 GB MoE and the
+  11 GB MoE reach *ready* in ~4 s (mmap + unified memory); model size barely moves
+  it. On the GPUs, load is dominated by VRAM transfer but still seconds, not the
+  loop cost.
+- **Plan is the single most expensive call** (~1.5 min here) — it's a cold prompt
+  cache and the longest single generation (full design + step list). Same on every
+  box; it just scales with decode speed.
+- **"Thinking" vs. doing splits the models.** Qwen3.6-MTP writes more per step
+  (slower decode + longer code → ~78 s/step) but lands it in **one attempt, every
+  time (0 retries)** — the clean, deliberate run. gpt-oss-20b is faster per call
+  (~36 s) but **wobbles on the JSON envelope: 6 retries + 1 `emit` self-correction**
+  — the same gate-2 behavior the 3090/5060 POCs saw, here absorbed by the
+  self-healing `emit` channel rather than failing the loop.
+- **Tool-use reliability is the real time sink, not raw tok/s.** The 3090/5060
+  POCs show the same split: **Gemma-4-26B = 0 retries (cleanest)**, gpt-oss-20b
+  needs `emit` rescues, qwen3-8b needed **12 in-context-RL re-prompts**, and dense
+  coders (Qwen3.6-27B, Devstral-24B) burn the clock on *generation* — Devstral
+  spent **>39 min on the plan alone**. A model that one-shots each envelope beats a
+  faster model that retries.
+
+**Net:** raw speed ranks **3090 > 5060 Ti > M1 Max**, but per-model the deciding
+factor is **attempts-per-phase**: the fewer retries and self-heals a model needs,
+the shorter the loop — independent of the box.
+
 ## Overview
 
 ```
