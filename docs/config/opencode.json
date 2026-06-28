@@ -23,50 +23,129 @@
         "qwable": {
           "name": "Qwable-v1 IQ4_XS (baseline)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         },
         "qwen3-coder": {
           "name": "Qwen3-Coder-30B-A3B-Instruct MoE (verified)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         },
         "gemma4-26b": {
           "name": "Gemma-4-26B-A4B-it MoE (verified, best quality)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         },
         "gemma4-31b": {
           "name": "Gemma-4-31B-it + E2B draft, dense spec-decode (verified)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 16384, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 16384,
+            "output": 4096
+          },
           "options": {}
         },
         "gptoss-20b": {
           "name": "gpt-oss-20b MXFP4 (RTX 5060 Ti / Blackwell FP4 showcase)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         },
         "phi-4": {
           "name": "Phi-4-14B dense (RTX 5060 Ti, fully resident)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         },
         "qwen3-8b": {
           "name": "Qwen3-8B dense (RTX 5060 Ti; spec-decode w/ Qwen3-0.6B draft)",
           "tools": true,
-          "cost": { "input": 0, "output": 0 },
-          "limit": { "context": 32768, "output": 4096 },
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "ornith-35b-gguf": {
+          "name": "Ornith-1.0-35B Q6_K (GGUF)",
+          "tools": true,
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "ornith-9b-gguf": {
+          "name": "Ornith-1.0-9B Q8_0 (GGUF)",
+          "tools": true,
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        }
+      }
+    },
+    "mlx": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MLX (local, mlx_lm.server)",
+      "options": {
+        "baseURL": "http://localhost:8080/v1",
+        "apiKey": "local"
+      },
+      "models": {
+        "ornith35mlx": {
+          "name": "Ornith-1.0-35B MLX 6bit",
+          "tools": true,
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
           "options": {}
         }
       }
