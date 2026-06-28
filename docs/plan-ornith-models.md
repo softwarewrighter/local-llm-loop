@@ -164,4 +164,36 @@ the 9B as the small-card stand-in:
    **Q6_K**, same prompt, decode + prefill. Quantifies the Apple-Silicon MLX speedup.
 3. **MTP** (follow-up) — MLX-MTP / GGUF-APEX-MTP self-spec A/B vs the solo numbers.
 
-Results land in [performance-analysis.md](performance-analysis.md) once measured.
+## Measured results (M1 Max, 2026-06-28)
+
+All on the M1 Max (64 GB). GGUF via `llama-server` (b9770), MLX via `mlx_lm.server`
+(mlx-lm 0.31.3). Both runtimes load the `qwen3_5`/`qwen3_5_moe` arch and **clear
+gate 1 — native `tool_calls`** (Ornith's Qwen template parses in llama.cpp *and*
+mlx_lm.server).
+
+**Throughput (`llama-bench` for GGUF; `mlx_lm` generate for MLX):**
+
+| Model | Runtime / quant | Prefill | Decode | Peak mem |
+|-------|-----------------|--------:|-------:|---------:|
+| 9B Dense | GGUF Q8_0 (llama.cpp) | 542 (pp512) | **32.9** | ~9 GB |
+| 9B Dense | MLX 8-bit | — | **~37** | ~9.7 GB |
+| 35B MoE | GGUF Q6_K (llama.cpp) | 815 (pp512) | **40.7** | ~28 GB |
+| 35B MoE | **MLX 6-bit** | 577 (1.7k-tok) | **55.6** | ~29.8 GB |
+
+→ **MLX wins decode by ~1.35×** (35B: 55.6 vs 40.7; 9B: 37 vs 33) — Apple's
+framework is better tuned for Metal. Prefill methodology differs (pp512 vs a
+1.7k-token generate), so it's not directly comparable; decode is the robust signal.
+
+**Wall-clock to working code (the headline metric) — Ornith-35B, M1 Max:**
+
+| Runtime | Loop wall-clock | Steps | `cargo test` | Run shape |
+|---------|----------------:|:-----:|:------------:|-----------|
+| **MLX 6-bit** | **6m06s** | 3 (all *Continue*) | ✅ **3/3** | clean single crate (even added a `--times 0` test) |
+| GGUF Q6_K | *(in progress)* | — | — | ⚠️ **wandered on first attempt** — the planner hallucinated a write to `/Users/brian/.../fish_greeting.fish` (auto-rejected as external dir), then retried |
+
+The MLX run is clean and fast; the GGUF run exposed an Ornith reasoning-model
+**wander** (off-task file write outside the workspace) under the llama.cpp Qwen
+template — a tool/template-interaction quirk worth a closer look, not necessarily
+a model-capability gap. Full cross-runtime + cross-hardware numbers consolidate
+into [performance-analysis.md](performance-analysis.md) as the GGUF loop A/B and
+the small-card (3060/5060) 9B runs complete.
