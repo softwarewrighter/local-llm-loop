@@ -45,6 +45,8 @@ want qwen3-8b && { dl unsloth/Qwen3-8B-GGUF Qwen3-8B-Q4_K_M.gguf qwen3-8b
 want qwen36   && dl unsloth/Qwen3.6-27B-GGUF                   Qwen3.6-27B-Q4_K_M.gguf                      qwen3.6-27b
 # 5b. Gemma-4-26B-A4B MoE, MXFP4 — VERIFIED 3rd fast+good coder (FP4-native, ~61 t/s, clean loop)
 want gemma4   && dl unsloth/gemma-4-26B-A4B-it-GGUF           gemma-4-26B-A4B-it-MXFP4_MOE.gguf            gemma4-26b
+# 5c. Ornith-1.0-9B Q8 dense — VERIFIED small coder (fits whole; ~4m42s loop, SWE-bench 69.4)
+want ornith9  && dl bartowski/deepreinforce-ai_Ornith-1.0-9B-GGUF  deepreinforce-ai_Ornith-1.0-9B-Q8_0.gguf  ornith-9b
 # 6. Gemma quality candidate (the plan wanted "Gemma-4"; Gemma-3-27B is the available analog)
 want gemma3   && dl unsloth/gemma-3-27b-it-GGUF               gemma-3-27b-it-Q4_K_M.gguf                   gemma-3-27b
 

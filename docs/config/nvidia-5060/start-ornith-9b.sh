@@ -7,7 +7,7 @@
 #
 #   Endpoint : http://127.0.0.1:8080/v1
 #   API key  : "local"          (must match opencode.json provider.options.apiKey)
-#   Model id : ornith-9b         (opencode refs it as llamacpp/ornith-9b)
+#   Model id : ornith-9b-gguf    (opencode refs it as llamacpp/ornith-9b-gguf)
 #
 # WHY 9B HERE (not the 35B): the 9B-Dense fits 16 GB whole at Q8_0 (8.88 GiB).
 # The 35B-MoE (Q6_K 28 GiB) does NOT fit 16 GB and would need heavy `--n-cpu-moe`
@@ -26,7 +26,7 @@ set -euo pipefail
 
 LLAMA_SERVER="${LLAMA_SERVER:-/disk1/build/llama.cpp/build/bin/llama-server}"   # CUDA sm_120 build
 MODEL="${MODEL:-/disk1/models/ornith-9b/deepreinforce-ai_Ornith-1.0-9B-Q8_0.gguf}"  # 8.88 GiB dense
-ALIAS="${ALIAS:-ornith-9b}"     # MUST match the opencode.json model key (llamacpp/ornith-9b)
+ALIAS="${ALIAS:-ornith-9b-gguf}" # MUST match the opencode.json model key (llamacpp/ornith-9b-gguf)
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8080}"
 API_KEY="${API_KEY:-local}"
