@@ -21,18 +21,46 @@ local `llama-server`, model loaded once and reused across every call.
 
 | Box (VRAM) | Best models, by loop wall-clock | Measured? |
 |------------|---------------------------------|-----------|
-| **RTX 3060 · 12 GB** | Qwable-v1 (MoE, experts→RAM offload); **Ornith-1.0-9B** Q6 fits whole | throughput only — loop pending |
+| **RTX 3060 · 12 GB** | **Ornith-1.0-9B+MTP 4m29s** › Qwen3-Coder-30B 7m20s › Ornith-1.0-9B 10m58s › Qwen3.6-35B 13m40s | ✅ **fully loop-timed** |
 | **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s | ✅ **fully loop-timed** |
 | **RTX 3090 · 24 GB** | **Qwen3-Coder-30B ~3m30s**; also Gemma-4-26B (*best code*), Qwen3.6-35B-MTP, Gemma-4-31B+E2B draft | qwen3-coder loop-timed; rest throughput-verified |
 | **M1 Max · 64 GB** | **gpt-oss-20b 3m34s** › Ornith-1.0-35B (MLX) 6m06s › Qwen3.6-35B-MTP 8m01s | ✅ loop-timed; holds *any* model |
 
-Notes: **16 GB** runs MoE coders ≤30B (light `--n-cpu-moe`) + the dense 9B Ornith;
-**24 GB** fits 30–35B whole; **64 GB** fits anything (and MLX is ~1.35× GGUF decode
-on Apple Silicon). The **same model is faster on a bigger/faster box** (Qwen3-Coder:
-~3m30s on the 3090 vs 6m38s on the 5060; gpt-oss: 1m13s on the 5060 vs 3m34s on the
-M1 Max). Per-box detail: [5060](docs/nvidia-5060-poc-summary.md) ·
-[3090](docs/nvidia-3090-poc-summary.md) · [3060](docs/arch-nvidia-3060-poc-summary.md) ·
-[M1 Max](docs/mac-poc-summary.md).
+Notes: **12 GB** runs the dense 9B Ornith whole (+ its MTP head) and A3B MoE coders
+≤35B via `--n-cpu-moe` (experts→RAM); **16 GB** runs MoE coders ≤30B (light
+`--n-cpu-moe`) + the dense 9B Ornith; **24 GB** fits 30–35B whole; **64 GB** fits
+anything (and MLX is ~1.35× GGUF decode on Apple Silicon). The **same model is
+faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
+5060; gpt-oss: 1m13s on the 5060 vs 3m34s on the M1 Max). Per-box detail:
+[5060](docs/nvidia-5060-poc-summary.md) · [3090](docs/nvidia-3090-poc-summary.md) ·
+[3060 (measured)](docs/nvidia-3060-12-results.md) · [M1 Max](docs/mac-poc-summary.md).
+
+### Every measured loop run — slowest → fastest
+
+All boxes, all models that produced a `cargo test`-green crate, by measured loop
+wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
+(**low → high VRAM: 3060 12 GB ‹ 5060 Ti 16 GB ‹ 3090 24 GB ‹ M1 Max 64 GB**).
+
+| Model | Box (VRAM tier) | Placement | **Loop wall-clock** |
+|-------|-----------------|-----------|--------------------:|
+| Qwen3.6-27B (dense) | 5060 Ti · 16 GB | offload | ~75 min 🐌 |
+| Qwen3.6-35B-A3B (no MTP) | **3060 · 12 GB** | `--n-cpu-moe` | 13m40s |
+| Ornith-1.0-9B | **3060 · 12 GB** | resident | 10m58s |
+| Gemma-4-26B-A4B | 5060 Ti · 16 GB | `--n-cpu-moe` | 9m02s |
+| Qwen3.6-35B-A3B-MTP | M1 Max · 64 GB | whole + MTP | 8m01s |
+| Qwen3-Coder-30B-A3B | **3060 · 12 GB** | `--n-cpu-moe` | 7m20s |
+| Qwen3-Coder-30B-A3B | 5060 Ti · 16 GB | `--n-cpu-moe` | 6m38s |
+| Ornith-1.0-35B (MLX) | M1 Max · 64 GB | whole | 6m06s |
+| Ornith-1.0-9B | 5060 Ti · 16 GB | resident | 4m42s |
+| **Ornith-1.0-9B + MTP** | **3060 · 12 GB** | resident + MTP | **4m29s** |
+| gpt-oss-20b | M1 Max · 64 GB | whole | 3m34s |
+| Qwen3-Coder-30B-A3B | 3090 · 24 GB | whole | ~3m30s |
+| **gpt-oss-20b** MXFP4 | 5060 Ti · 16 GB | whole (FP4) | **1m13s** 🥇 |
+
+Two things the table makes plain: a **fast small model can beat a slow big one across
+tiers** — Ornith-9B+MTP on the *lowest* box (4m29s) edges Ornith-9B on the 5060 and
+nearly matches gpt-oss on the M1 Max — and on the **12 GB 3060 the spread is 3×**
+(4m29s → 13m40s), driven by **MTP + how many tokens the model thinks**, not raw size.
 
 **Two gates a model must clear** (hardware-independent): **native tool-calling
 llama.cpp parses** + **strict-JSON output**. Larger MoE/dense coders (≥26B) clear
@@ -226,6 +254,7 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/mac-poc-summary.md](docs/mac-poc-summary.md) — annotated end-to-end proof-of-concept run (macOS / Apple Silicon)
 - [docs/arch-poc-summary.md](docs/arch-poc-summary.md) — annotated end-to-end proof-of-concept run (Arch Linux / NVIDIA RTX 3090, full GPU)
 - [docs/arch-nvidia-3060-poc-summary.md](docs/arch-nvidia-3060-poc-summary.md) — end-to-end run on a 12 GB RTX 3060 with MoE experts offloaded to system RAM
+- [docs/nvidia-3060-12-results.md](docs/nvidia-3060-12-results.md) — **measured** 12 GB RTX 3060 loop wall-clocks: 4/4 models green — Ornith-9B+MTP (**4m29s**), Qwen3-Coder-30B (7m20s), Ornith-9B (10m58s), Qwen3.6-35B (13m40s); MTP head ~1.3–1.7× decode; offloaded A3B MoE beats the resident dense 9B
 - [docs/nvidia-3090-poc-summary.md](docs/nvidia-3090-poc-summary.md) — RTX 3090 fast-GPU-resident coder run (Qwen3-Coder-30B-A3B MoE); the model-search matrix + speculative-decoding findings
 - [docs/nvidia-5060-poc-summary.md](docs/nvidia-5060-poc-summary.md) — RTX 5060 Ti 16 GB (Blackwell/FP4) run: **4 models produce working code**, by loop wall-clock — gpt-oss-20b (**1m13s**), Ornith-1.0-9B (4m42s, a purpose-trained 9B coder), Qwen3-Coder-30B (6m38s), Gemma-4-26B-A4B (9m02s); dense ≥27B build but are too slow (Qwen3.6-27B ~75m, Devstral-24B); general ≤14B can't code. Native MXFP4 prefill **beats the 3090** on gpt-oss-20b
 - [docs/plan-rtx5060-16.md](docs/plan-rtx5060-16.md) — plan: testing small coders (±spec-decode) on a 16 GB RTX 5060 (Blackwell / FP4)
