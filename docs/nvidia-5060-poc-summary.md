@@ -173,15 +173,32 @@ lets gpt-oss-20b — a 3090 gate-2 failure — complete the loop. See
 `cargo build`s and passes `cargo test`. After the harness was progressively
 hardened (see below), this is purely a **model-capability** question.
 
-### ✅ Models that produce working code (≥ 20B)
+### ✅ Models that produce working code
 
-**Fast + good — the practical working set** (all **MoE**: small active params → fast):
+**Wall-clock to a working crate** — the headline metric: the full plan→execute→
+review loop until `cargo test` is green. Every model is served by **`llama-server`
+(loaded once into the GPU, reused across all opencode calls** — verified:
+gpt-oss did 128 requests from one load). Measured 2026-06-28 from loop log timestamps:
 
-| Model | Fit on 16 GB | Decode `tg128` | Loop + `cargo test` | Notes |
-|-------|--------------|---------------:|:-------------------:|-------|
-| **gpt-oss-20b** MXFP4 | resident (12 GB) | **~138 t/s** | ✅ 2/2 | fastest — FP4-native |
-| **Gemma-4-26B-A4B** MXFP4 | light `--n-cpu-moe` | **~61 t/s** | ✅ 2/2 | **cleanest run — 0 retries, single crate; FP4-native** ⭐ |
-| **Qwen3-Coder-30B-A3B** | `--n-cpu-moe 16` | ~55 t/s | ✅ 2/2 | strongest coder |
+| Model | Type / fit | **Loop wall-clock** | Decode `tg128` | Retries | `cargo test` |
+|-------|-----------|--------------------:|---------------:|:-------:|:------------:|
+| **gpt-oss-20b** MXFP4 | MoE, resident | **1m 13s** 🥇 | ~138 t/s | 0 | ✅ 2/2 |
+| **Ornith-1.0-9B** Q8 | **dense 9B**, resident | **4m 42s** 🥈 | ~33 t/s | 0 | ✅ 2/2 |
+| **Qwen3-Coder-30B-A3B** | MoE, `--n-cpu-moe 16` | **6m 38s** 🥉 | ~55 t/s | 15 | ✅ 2/2 |
+| **Gemma-4-26B-A4B** MXFP4 | MoE, `--n-cpu-moe 16` | **9m 02s** | ~61 t/s | 0 | ✅ 2/2 |
+| Qwen3.6-27B | dense, offload | **~75 min** 🐌 | slow | — | ✅ 2/2 |
+
+**Wall-clock ≠ decode speed.** Loop time ≈ *decode × tokens-generated ×
+(1 + retries) × steps*, so the ranking diverges from raw t/s:
+- **gpt-oss-20b** wins outright — fastest decode *and* dynamic review trimmed it to 2 steps.
+- **Ornith-9B is 2nd despite the *slowest* decode** — it's terse (small) and needs **0 retries**.
+- **Qwen3-Coder**'s **15 ICRL retries** cost it (the retry loop kept it under 10 min).
+- **Gemma** has faster decode than Qwen3-Coder yet a slower loop — more verbose generation.
+
+> **Ornith-1.0-9B breaks the "≤14B can't code" floor.** Every *general* model ≤14B
+> failed (below), but Ornith-9B — **RL-trained specifically for agentic coding**
+> (SWE-bench Verified 69.4) — produces a clean working crate, fast, with 0 retries.
+> Purpose-built coders clear the bar far below the ~20–30B general-model ceiling.
 
 **Code but too slow on 16 GB** — dense, so no MoE/MTP speedup; both fill the card:
 
@@ -190,7 +207,7 @@ hardened (see below), this is purely a **model-capability** question.
 | **Qwen3.6-27B** (dense) | (offloaded) | ✅ builds, but **~75-min loop** |
 | **Devstral-Small-2-24B** (dense) | **~28 t/s** | Mistral's agentic coder (**SWE-bench 68%**), gate-1 ✅ — but dense + agentic-verbose ran **>39 min on the *plan alone*** (aborted). No spec-decode escape on 16 GB (fills VRAM; no MTP). |
 
-### ✗ Everything ≤ 14B fails — at the gates or at code quality
+### ✗ *General* models ≤ 14B fail — at the gates or at code quality (Ornith-9B excepted)
 
 | Model | Size | Verdict |
 |-------|-----:|---------|
@@ -219,15 +236,16 @@ scale a model's **protocol-following, not its coding ability**. qwen3-8b now
 *completes* the loop yet still cannot write a valid crate.
 
 ### Recommendation
-On a 16 GB 5060 Ti, the **practical working set is three MoE coders**:
-**gpt-oss-20b** (fastest, FP4-resident), **Gemma-4-26B-A4B** (clean + fast,
-FP4-native), and **Qwen3-Coder-30B-A3B** (strongest coder). The common thread is
-**MoE** — small active params keep decode fast under light offload. **Dense
-models are out for *speed*, not quality**: Qwen3.6-27B and Devstral-24B both
-build, but at ~28–slow t/s a run takes 75 min to hours, and on 16 GB neither can
-use speculative decoding (they fill VRAM; no MTP head). **≤14B models cannot code
-reliably regardless of prompt strategy** — the limit there is the model, not the
-harness.
+On a 16 GB 5060 Ti, the **practical working set is four models** by wall-clock:
+**gpt-oss-20b** (fastest, ~1m13s, FP4-resident), **Ornith-1.0-9B** (~4m42s — tiny,
+fast, a purpose-trained coder), **Qwen3-Coder-30B-A3B** (~6m38s, strongest coder),
+and **Gemma-4-26B-A4B** (~9m02s, cleanest run, FP4-native). The MoE coders stay
+fast under light offload; **Ornith-9B is the standout small exception** (dense 9B,
+resident, RL-trained for agentic coding). **Dense ≥27B is out for *speed*, not
+quality**: Qwen3.6-27B and Devstral-24B both build, but a run takes 75 min to
+hours, and on 16 GB neither can use speculative decoding (they fill VRAM; no MTP
+head). **General models ≤14B cannot code reliably** regardless of prompt strategy
+— the limit there is the model, not the harness.
 
 ## FP4 question — answered (measured)
 
