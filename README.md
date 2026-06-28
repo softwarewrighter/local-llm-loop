@@ -161,7 +161,7 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/arch-poc-summary.md](docs/arch-poc-summary.md) — annotated end-to-end proof-of-concept run (Arch Linux / NVIDIA RTX 3090, full GPU)
 - [docs/arch-nvidia-3060-poc-summary.md](docs/arch-nvidia-3060-poc-summary.md) — end-to-end run on a 12 GB RTX 3060 with MoE experts offloaded to system RAM
 - [docs/nvidia-3090-poc-summary.md](docs/nvidia-3090-poc-summary.md) — RTX 3090 fast-GPU-resident coder run (Qwen3-Coder-30B-A3B MoE); the model-search matrix + speculative-decoding findings
-- [docs/nvidia-5060-poc-summary.md](docs/nvidia-5060-poc-summary.md) — RTX 5060 Ti 16 GB (Blackwell/FP4) run: **3 models produce working code** (gpt-oss-20b, Qwen3-Coder-30B, Qwen3.6-27B); ≤14B models can't (capability ceiling, not harness). Measured `llama-bench`; native MXFP4 prefill **beats the 3090** on gpt-oss-20b
+- [docs/nvidia-5060-poc-summary.md](docs/nvidia-5060-poc-summary.md) — RTX 5060 Ti 16 GB (Blackwell/FP4) run: **3 fast+good MoE coders work** (gpt-oss-20b ~138 t/s, Gemma-4-26B-A4B ~61, Qwen3-Coder-30B ~55); dense models build but are too slow (Qwen3.6-27B, Devstral-24B); ≤14B can't code (capability ceiling, not harness). Native MXFP4 prefill **beats the 3090** on gpt-oss-20b
 - [docs/plan-rtx5060-16.md](docs/plan-rtx5060-16.md) — plan: testing small coders (±spec-decode) on a 16 GB RTX 5060 (Blackwell / FP4)
 - [docs/plan-rtx3060-12.md](docs/plan-rtx3060-12.md) — plan: testing small coders (±spec-decode) on a 12 GB RTX 3060 (Ampere + RAM offload)
 - [docs/performance-analysis.md](docs/performance-analysis.md) — throughput benchmarks: RTX 3090 vs RTX 3060 (CPU-offload) vs M1 Max
