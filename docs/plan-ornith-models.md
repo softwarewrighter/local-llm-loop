@@ -88,12 +88,16 @@ Ornith offers **three** routes; only the MTP one is worth it on this harness:
    (same finding the repo reached for A3B MoEs on the 3090). The custom 248320
    vocab also means you **can't borrow an external small Qwen3 draft** (those are
    151936-vocab).
-2. **MTP self-speculation.** Community MTP grafts (`dan9070`, `wang-yang`, …) add a
-   next-token head → `--spec-type draft-mtp` (GGUF) or the MLX-MTP builds, **no
-   second model, free decode uplift** — the same mechanism that gave Qwen3.6-MTP
-   ~1.24× on the M1 Max. ⚠️ Not in the official weights (`config.json` has no
-   `num_nextn_predict_layers`), so verify the head actually loads. ✅ **The one
-   real option.**
+2. **MTP self-speculation.** Community MTP grafts (`protoLabsAI`, `dan9070`,
+   `wang-yang`, …) add a next-token head → `--spec-type draft-mtp` (GGUF) or the
+   MLX-MTP builds, **no second model, free decode uplift** — the same mechanism
+   that gave Qwen3.6-MTP ~1.24× on the M1 Max. Not in the official weights
+   (`config.json` has no `num_nextn_predict_layers`), but **confirmed available
+   for the 9B**: [`protoLabsAI/Ornith-1.0-9B-MTP-GGUF`](https://huggingface.co/protoLabsAI/Ornith-1.0-9B-MTP-GGUF)
+   (KL-distilled head, **~1.4–1.7× on an A6000**, acceptance ~0.766,
+   distribution-lossless; needs llama.cpp ≥ b9616). ✅ **The one real option** —
+   and the fast fallback for the small cards (see
+   [plan-rtx3060-12.md](plan-rtx3060-12.md#fallback-tier--if-the-offloaded-moes-run-too-slow--10-min-loop)).
 3. **Gemma dense pair.** The 31B-Dense + a small Gemma-4 draft (the repo's proven
    dense spec-decode pattern) would work — but the 31B GGUF doesn't exist. ❌ moot.
 
@@ -141,7 +145,7 @@ cards, 35B-MoE on the big two.**
 
 | System | Model | Recommended quant | Fit | Speculative decoding |
 |--------|-------|-------------------|-----|----------------------|
-| **RTX 3060 12 GB** | 9B Dense | **Q6_K (7.4)** / Q8_0 (9.5) | whole, resident | none usable (no 9B MTP fit gain; no faster draft) — solo |
+| **RTX 3060 12 GB** | 9B Dense | **Q6_K (7.4)** / Q8_0 (9.5) | whole, resident | ✅ **MTP self-spec** — [`protoLabsAI/Ornith-1.0-9B-MTP-GGUF`](https://huggingface.co/protoLabsAI/Ornith-1.0-9B-MTP-GGUF), ~1.4–1.7× (no external draft: custom 248320 vocab) |
 | **RTX 5060 Ti 16 GB** | 9B Dense | **Q8_0 (9.5)** | whole, big headroom | solo (9B isn't MXFP4 → no FP4 lane). Stretch: 35B-Q4 + `--n-cpu-moe` |
 | **RTX 3090 24 GB** | 35B MoE | **Q4_K_M (21.2)** whole | fits (tight, ~3B active → fast) | or **APEX-MTP (26.2)** w/ light `--n-cpu-moe` for self-spec |
 | **M1 Max 64 GB** | 35B MoE | MLX **6-bit / 8-bit**, or GGUF Q6_K/Q8_0; full 262k ctx | easy | ⭐ **MLX-MTP** (`wang-yang/...MTPLX`) or GGUF APEX-MTP — self-spec |

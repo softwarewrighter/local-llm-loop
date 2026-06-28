@@ -72,6 +72,19 @@
           },
           "options": {}
         },
+        "qwen36-mtp": {
+          "name": "Qwen3.6-35B-A3B-MTP MoE (self-spec; RTX 3060 offload)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
         "gptoss-20b": {
           "name": "gpt-oss-20b MXFP4 (RTX 5060 Ti / Blackwell FP4 showcase)",
           "tools": true,
@@ -123,6 +136,19 @@
         "ornith-9b-gguf": {
           "name": "Ornith-1.0-9B Q8_0 (GGUF)",
           "tools": true,
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "ornith-9b-mtp": {
+          "name": "Ornith-1.0-9B + MTP head (resident self-spec; RTX 3060 fallback)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
           "limit": {
             "context": 32768,
             "output": 4096
