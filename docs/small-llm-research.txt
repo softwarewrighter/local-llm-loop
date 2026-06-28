@@ -1,0 +1,523 @@
+ChatGPT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+what are the smallest LLMs that support MTP or, alternatively, can be combined into two models, draft and target, that fit comfortably in 12G VRAM (leaving room for context)?
+
+Your constraints are actually fairly tight:
+
+12 GB VRAM total
+
+Leave enough VRAM for a useful KV cache/context (4k–16k tokens)
+
+Prefer coding models
+
+Prefer llama.cpp/opencode compatibility
+
+Either:
+
+native MTP (Multi-Token Prediction), or
+
+traditional draft + target speculative decoding
+
+Those two approaches have very different sweet spots.
+
+Option 1: Native MTP (my recommendation)
+This is becoming the most attractive option because you only load one model.
+
+The catch is that the model must have been trained with MTP heads.
+
+Today the main supported families are:
+
+Model	Native MTP	Fits 12G?	Coding
+Qwen 3.5 4B	Yes	✓ easily	Very good
+Qwen 3.6 4B	Yes	✓	Excellent
+Gemma 4 E2B	Yes	✓	Good
+Gemma 4 E4B	Yes	borderline	Good
+llama.cpp recently merged native MTP support, and current support is primarily for the newer Qwen 3.5/3.6 MTP models, with Gemma 4 assistant checkpoints also supported in engines such as vLLM. Support depends on the model architecture including MTP heads. 
+
+For a 12 GB card, I'd rank them:
+
+Qwen 3.6 4B MTP
+
+Qwen 3.5 4B MTP
+
+Gemma 4 E2B
+
+Estimated VRAM
+Approximate GGUF usage:
+
+Model	Q4_K_M	Q5_K_M
+Qwen 4B	~2.8 GB	~3.5 GB
+Gemma E2B	~2.3 GB	~3 GB
+Leaving:
+
+7–8 GB
+
+enough for
+
+Flash Attention
+
+long context
+
+speculative heads
+
+This is an ideal fit.
+
+Option 2: Draft + Target
+Traditional speculative decoding works best when the draft model is roughly 1/4 to 1/8 the size of the verifier.
+
+For a 12 GB card I would choose something like:
+
+Draft	Target
+0.5B	4B
+1B	4B
+1.5B	7B (tight)
+Best Qwen pair
+Draft
+
+Qwen 2.5 0.5B Instruct
+
+Target
+
+Qwen 2.5 Coder 3B
+
+or Qwen 2.5 Coder 7B if heavily quantized
+
+Memory:
+
+0.5B Q4      ~0.5 GB
+
+3B Q4        ~2.3 GB
+
+KV cache     2-3 GB
+
+Total         ~6 GB
+Very comfortable.
+
+Best Gemma pair
+Draft
+
+Gemma 3 1B
+
+Target
+
+Gemma 4 E4B
+
+Total:
+
+roughly
+
+1 GB
++
+3.5 GB
++
+context
+around 7–8 GB.
+
+Coding-specific choices
+For Rust code I'd currently choose
+
+Pair	Quality
+Qwen 0.5B → Qwen 4B	Excellent
+Qwen 1.5B → Qwen 4B	Even better
+Gemma 1B → Gemma 4E2B	Good
+SmolLM2 360M → Qwen 4B	Surprisingly decent
+If using Opencode
+Because you've already discovered that instruction-following and tool use are often the weak point, I'd avoid mixing unrelated model families.
+
+These combinations tend to maintain tokenizer compatibility and higher speculative acceptance rates:
+
+Qwen → Qwen
+
+Gemma → Gemma
+
+Avoid
+
+Gemma → Qwen
+
+Llama → Qwen
+
+Mistral → Gemma
+
+Acceptance drops dramatically.
+
+What I would actually run on a 12 GB GPU
+Configuration A (best overall)
+Target:
+Qwen 3.6 4B MTP
+
+No draft model
+
+Flash Attention
+Q4_K_M
+16k context
+Pros:
+
+one model
+
+simplest setup
+
+highest acceptance
+
+best coding quality
+
+Configuration B (best speculative)
+Draft:
+Qwen 2.5 0.5B
+
+Target:
+Qwen 2.5 Coder 4B
+Very fast.
+
+Leaves several GB for KV cache.
+
+Configuration C (maximum quality)
+Draft:
+Qwen 1.5B
+
+Target:
+Qwen 7B
+This can fit in 12 GB only with aggressive quantization (for example, Q4-class GGUFs) and a more modest context window. Expect roughly 9–10 GB for weights, leaving only about 2–3 GB for the KV cache, so practical context length will be noticeably shorter than with the 4B target.
+
+Given your longer-term goals
+Based on our earlier discussions about opencode, llama.cpp, Rust coding agents, and wanting a configuration that also scales to your RTX 3090 later, I would concentrate on just two families:
+
+Qwen 3.6 4B MTP — this is likely the best single-model solution for a 12 GB GPU because it combines good coding ability with native MTP support. 
+
+Qwen 0.5B → Qwen 4B — keep this as your fallback when you want to compare native MTP against classic speculative decoding using two separate models.
+
+That gives you an excellent platform for benchmarking latency, acceptance rates, context scaling, and tool-use reliability without changing model families, making the comparison much cleaner.
+
+
+Have you considered the (very new) Ornith models?  Also, can SmolLLM, or similar small models be configured for speed (MTP and/or speculative decode) and then be fine-tuned to become better coders (distilled from a larger model on a bigger, e.g., 3090-24G, GPU)?
+
+Yes, and I think Ornith is particularly interesting for your use case—but probably not for the reason most people are excited about.
+
+Ornith
+The big innovation isn't a new base architecture. It's the RL post-training.
+
+Ornith is trained on top of Gemma 4 and Qwen 3.5 checkpoints, but instead of merely optimizing code generation, it learns its own agent scaffold (planning, tool use, retries, debugging, etc.) during reinforcement learning. In other words, it is optimizing both the coding policy and the orchestration policy simultaneously. 
+
+For someone building an AI software engineering workflow—as we've discussed previously—that is potentially much more valuable than another +2% on a benchmark.
+
+However...
+
+The smallest Ornith today is still 9B
+Current public models are
+
+Model	Active parameters
+Ornith 9B	9B dense
+Ornith 31B	31B dense
+Ornith 35B	~3B active MoE
+Ornith 397B	large MoE
+There isn't (yet) a 3B, 4B, or 2B Ornith. 
+
+For a 12 GB GPU I'd rather run
+
+Qwen 4B MTP
+
+than
+
+Ornith 9B
+
+simply because you'll have much more room for KV cache and longer contexts.
+
+I think the really interesting opportunity is elsewhere
+You mentioned:
+
+Can SmolLM (or similar) be trained into a better coding model?
+
+I think the answer is absolutely yes, and in fact this is one of the most promising "personal model" projects today.
+
+Notice what you are not trying to do.
+
+You aren't trying to create another frontier model.
+
+You are trying to create:
+
+an extremely fast draft model
+
+that writes Rust
+
+follows instructions
+
+emits tool calls correctly
+
+understands your architecture
+
+produces high speculative acceptance.
+
+That is a much easier problem.
+
+Think of the draft model differently
+Most people think
+
+small model
+    ↓
+tries to solve everything
+I would instead think
+
+small model
+
+only predicts
+
+the next 4–16 obvious coding tokens
+Examples:
+
+impl Foo {
+Predicts
+
+pub fn new(...)
+match result {
+Predicts
+
+Ok(value) =>
+Err(err) =>
+#[derive(
+Predicts
+
+Debug,
+Clone,
+Serialize,
+Deserialize
+This is far easier than solving SWE-bench.
+
+Acceptance matters more than intelligence
+For speculative decoding, the metric isn't benchmark score.
+
+It is
+
+acceptance rate
+If the draft predicts
+
+90%
+of the target tokens,
+
+it's already excellent.
+
+A genius draft model that only matches 55% is actually worse.
+
+Why SmolLM is attractive
+SmolLM has several advantages:
+
+tiny
+
+very fast
+
+permissive licensing
+
+inexpensive to fine-tune
+
+already reasonably good tokenizer efficiency
+
+The weaknesses are exactly what LoRA training tends to improve:
+
+poor Rust style
+
+inconsistent tool calls
+
+weak architectural discipline
+
+I would not fine-tune on generic code
+Instead I'd build a synthetic dataset.
+
+Something like
+
+Rust 2024
+
+↓
+
+small functions
+
+↓
+
+cargo fmt
+
+↓
+
+clippy clean
+
+↓
+
+workspace architecture
+
+↓
+
+tool calls
+
+↓
+
+TDD workflow
+
+↓
+
+your ECS architecture
+
+↓
+
+your DSL
+
+↓
+
+your macros
+
+↓
+
+your code metrics
+Essentially a "Mike Coder".
+
+Not in the sense of memorizing your code, but your engineering preferences.
+
+Distillation is even better
+Your idea
+
+distilled from a larger model
+
+is exactly how I'd approach it.
+
+Imagine
+
+Qwen 30B
+or
+
+Ornith 35B
+running on your RTX 3090.
+
+Generate
+
+Prompt
+
+↓
+
+Reasoning
+
+↓
+
+Tool calls
+
+↓
+
+Code
+
+↓
+
+Tests
+
+↓
+
+Refactoring
+
+↓
+
+Final answer
+Now train SmolLM only on
+
+Prompt
+
+↓
+
+Final answer
+or
+
+Prompt
+
+↓
+
+Tool calls
+
+↓
+
+Answer
+Millions of examples.
+
+The draft model becomes specialized.
+
+Even better: optimize for speculative decoding
+This is something I don't see many people discussing.
+
+Don't optimize for
+
+cross entropy
+Optimize for
+
+agreement with the target model.
+
+Your loss becomes approximately
+
+How often would the target
+have accepted these tokens?
+Now you're no longer training
+
+a coding model
+
+You're training
+
+a predictor of Qwen.
+
+That is almost exactly what speculative decoding wants.
+
+MTP makes this even more interesting
+Native MTP effectively teaches the model
+
+predict
+
+next
+
+2
+
+4
+
+8
+
+16
+
+tokens
+instead of just
+
+next token
+A draft model trained with a similar objective should become substantially better at speculative decoding.
+
+One direction I'd like to explore is:
+
+Large model
+        │
+        ▼
+Generate millions of
+accepted continuations
+        │
+        ▼
+Fine-tune SmolLM
+for acceptance
+        │
+        ▼
+Run speculative decoding
+against the same target
+That closes the loop: the draft is explicitly optimized to maximize the verifier's acceptance rate rather than to be a general-purpose language model.
+
+Given your hardware
+Considering your mix of an RTX 5060 (16 GB) and RTX 3090 (24 GB), I'd prioritize a two-stage pipeline:
+
+Teacher: a strong coding model such as a Qwen 3.5/3.6 or Ornith checkpoint on the 3090 generates high-quality coding trajectories, tool calls, and refactorings.
+
+Student: a 0.5B–2B model (SmolLM, Qwen 0.5B, or a similar compact architecture) is LoRA-trained specifically to imitate that teacher's accepted outputs and coding style.
+
+Deployment: use the student as the speculative draft model on your smaller GPUs, paired with the larger verifier.
+
+I suspect that a well-trained 1–2B draft model optimized for your coding workflow could outperform a generic 4B draft model in speculative decoding, because the objective isn't raw intelligence—it's maximizing agreement with the verifier while remaining extremely fast. That's an experiment I'd be very interested in seeing, and it's one that fits well within the hardware you already have.
+
+
+

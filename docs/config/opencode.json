@@ -154,6 +154,45 @@
             "output": 4096
           },
           "options": {}
+        },
+        "gemma-4-e4b-mtp": {
+          "name": "Gemma-4-E4B-it + MTP head (resident self-spec; small-model test)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "gemma-4-e2b-mtp": {
+          "name": "Gemma-4-E2B-it + MTP head (resident self-spec; ~2B floor test)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "qwen3-4b": {
+          "name": "Qwen3-4B dense + Qwen3-0.6B draft (classic spec-decode)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
         }
       }
     },
