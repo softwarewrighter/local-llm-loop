@@ -9,17 +9,16 @@ per-run traces are in [arch-poc-summary.md](arch-poc-summary.md),
 analysis.
 
 > **What's actually been run:** the project has been run end-to-end on **M1 Max**
-> (the macOS POC), **RTX 3090** (the Arch POC + `llama-bench`), and **RTX 3060
-> 12 GB** (the CPU-offload POC + `llama-bench`). The **RTX 5060 Ti 16 GB** has
-> **measured `llama-bench`** numbers (see its section + the
-> [5060 Ti POC](nvidia-5060-poc-summary.md)) but the agentic loop was **not**
-> auto-run there (the automation sandbox reaps persistent GPU servers). It has
+> (the macOS POC, plus **measured `llama-bench` + loop + `cargo test`** for
+> gpt-oss-20b and Qwen3.6-35B-A3B-MTP — see its section), **RTX 3090** (the Arch
+> POC + `llama-bench`), and **RTX 3060 12 GB** (the CPU-offload POC +
+> `llama-bench`). The **RTX 5060 Ti 16 GB** has **measured `llama-bench`** numbers
+> (see its section + the [5060 Ti POC](nvidia-5060-poc-summary.md)). It has
 > **not** been tested on the **P40** at all — that section is a pure prediction.
 >
-> So: the **RTX 3090** and **RTX 3060** figures are controlled `llama-bench`
-> measurements; the **M1 Max** figures are derived from its POC run plus hardware
-> characteristics; the **P40** figures are an untested prediction. Confidence is
-> noted per section.
+> So: the **M1 Max**, **RTX 3090**, **RTX 3060** and **5060 Ti** figures are
+> controlled `llama-bench` measurements; the **P40** figures are an untested
+> prediction. Confidence is noted per section.
 >
 > ⚠️ **The 3060 is a different regime from everything else here.** Every other row
 > holds the **whole model in the accelerator's memory**. The 3060 has only 12 GB —
@@ -211,6 +210,88 @@ Same shape as the [3060's offload curve](#measured--rtx-3060-12-gb-cpu-expert-of
 decode survives offload (only ~3.3B active params per token), prefill takes the
 hit (RAM-resident experts compute on the CPU). The 5060 Ti's faster GDDR7 +
 Blackwell tensor cores keep both regimes well ahead of the 3060's Qwable numbers.
+
+## Measured — M1 Max (Apple Silicon / Metal, 64 GB)
+
+Two of the models the 5060 Ti POC blessed, now **measured** on an **Apple M1 Max
+(10-core, 64 GB unified memory, ~400 GB/s, Metal)**, llama.cpp `75ad0b23e`
+(b9770), opencode 1.17.9. `llama-bench` with the project's serving flags
+(`-ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 -p 512 -n 128`), speculative decoding off —
+**directly comparable** to the 3090 / 5060 Ti tables above.
+
+> **The unified-memory advantage.** Both models fit **whole** in the 64 GB
+> unified memory — **no expert offload**. The 16 GB 5060 Ti had to spill
+> Qwen3-Coder-30B / Gemma-4-26B into system RAM; the Mac never pays that penalty.
+> So unlike the 3060/5060, *every* M1 Max row below is a clean full-residency
+> measurement, even for the 21 GB MoE.
+
+| Model | Arch | GGUF | Prefill `pp512` | Decode `tg128` | Fit |
+|-------|------|-----:|----------------:|---------------:|-----|
+| **gpt-oss-20b MXFP4** | MoE 21B-A3B | 11.27 GiB | **998 t/s** | **75.9 t/s** | whole (no FP4 accel) |
+| **Qwen3.6-35B-A3B-MTP** UD-Q4_K_M | MoE 35B-A3B | 21.10 GiB | 827 t/s | 47.2 t/s (MTP off) | whole |
+
+### MTP self-speculative decode — a real, measured win on this box
+
+performance-analysis.md predicted MTP would be *the* speedup on bandwidth-bound
+Apple Silicon. Measured via `llama-server --spec-type draft-mtp` (built-in
+next-token head, **no separate draft model**), same prompt, temp 0, same server —
+a clean A/B:
+
+| Qwen3.6-35B-A3B-MTP decode | t/s | draft acceptance |
+|---|---:|---:|
+| MTP **off** (`SPEC_OFF=1`) | 45.6 | — |
+| MTP **on** (`draft-mtp`, n=4) | **56.7** | 179/278 = **64%** |
+
+→ **~1.24× decode** from the embedded MTP head, free of a second model's VRAM.
+(The 64% accept here is below the 3090's reported 85% — n=4 / temp 0 / this quant
+— but the uplift is real and costs nothing.) `start-qwen36-mtp.sh` ships MTP on.
+
+### Gates + loop (both pass)
+
+Both clear gate 1 (native `tool_calls`) and complete the full
+plan→execute→review loop, producing a `greet` crate that **builds and passes
+`cargo test` (2/2)** — independently verified, not the model's own claim:
+
+| Model | Gate 1 | Loop | `cargo test` | Run shape |
+|-------|:------:|:----:|:------------:|-----------|
+| **Qwen3.6-35B-A3B-MTP** | ✅ | ✅ | ✅ 2/2 | clean — 3 steps, all *Continue*, single crate |
+| **gpt-oss-20b MXFP4** | ✅ | ✅ | ✅ 2/2 | single crate (one reviewer *Skip*); the `emit` self-heal channel carries its JSON, as on the 5060 |
+
+### Cross-hardware reading — M1 Max vs 5060 Ti vs 3090
+
+Same models, the three measured boxes (decode = `tg128`, prefill = `pp512`,
+spec-decode off unless noted):
+
+| | M1 Max (64 GB) | RTX 5060 Ti (16 GB) | RTX 3090 (24 GB) |
+|---|---:|---:|---:|
+| **gpt-oss-20b** decode | 75.9 | 138 | ~205 |
+| **gpt-oss-20b** prefill | 998 | 5,920 | ~5,652 |
+| **Qwen3.6-35B-A3B** decode | 47.2 (57 MTP) | — | ~143 (MTP) |
+| **Qwen3.6-35B-A3B** prefill | 827 | — | ~3,365 |
+| Holds the 21 GB MoE whole? | **yes** (unified) | no (offload) | yes |
+
+Three takeaways:
+
+1. **Decode is the bandwidth story it should be.** gpt-oss-20b at 75.9 t/s is
+   ~0.55× the 5060 Ti and ~0.37× the 3090 — close to the bandwidth ratios
+   (400 / 448 = 0.89; 400 / 936 = 0.43), with the Mac trailing a little more on
+   the FP4 model because **Metal has no native MXFP4 path** (it upcasts; only
+   Blackwell accelerates it). Still very usable: ~50–76 t/s solo across both MoEs.
+2. **Prefill is where Apple Silicon pays.** 998 / 827 t/s is **~6× under** the
+   NVIDIA cards — the M1 Max GPU has no tensor-core matmul unit, exactly the
+   compute-bound regime agentic coding leans on hardest (big per-turn prompts).
+   This, not decode, is the real cost of running the loop on a Mac.
+3. **The Mac's edge is capacity, and MTP.** 64 GB unified holds the 21 GB MoE
+   *and* a full 128k KV with room to spare — no offload, no quant-down, and the
+   built-in **MTP head buys ~1.24× decode for free** on the bandwidth-bound box
+   exactly as predicted. The 5060 Ti wins throughput per dollar; the M1 Max wins
+   when the model (or the context) doesn't fit a 16 GB card.
+
+**Net:** for *this* workload the ranking is **3090 > 5060 Ti > M1 Max on raw
+speed** (decode ~2–3×, prefill ~6×), but the M1 Max **completes the same loop
+with the same verified output** and is the only one of the three that never has
+to offload — so it's the comfortable choice when capacity matters more than
+turn latency.
 
 ## The two regimes
 
