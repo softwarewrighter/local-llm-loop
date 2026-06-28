@@ -10,26 +10,38 @@ whether to continue, insert new steps, skip a step, or stop and request human
 intervention.
 
 The harness is **model-agnostic** — it shells out to `opencode run --model
-<provider/model>`, so any model opencode can reach works. It started against
-Qwable-v1 but has since driven the loop to a verified, working Rust CLI with
-several local models. **Verified-working models** (complete the loop and produce
-code that passes `cargo test`), measured on an RTX 3090:
+<provider/model>`, so any model opencode can reach works.
 
-| Model | Notes |
-|-------|-------|
-| **Gemma-4-26B-A4B-it** | MoE, best greeter quality (`Hello, X!`) — see [3090 POC](docs/nvidia-3090-poc-summary.md) |
-| **Qwen3-Coder-30B-A3B-Instruct** | MoE, fastest verified coder (~189 tok/s decode) |
-| **Qwen3.6-35B-A3B-MTP** | MoE with built-in **MTP self-speculative decode** (85% accept, no separate draft) |
-| **Qwen3.6-27B** | dense; cleanest output structure (pure `lib.rs` + `main.rs`) |
-| **Gemma-4-31B-it + Gemma-4-E2B draft** | dense + speculative decoding (exact-vocab pair); the verified dense spec-decode pair |
-| **Qwable-v1 IQ4_XS** | the original baseline |
+## Which model on which box
 
-A model needs two things to work here: **native tool-calling that llama.cpp
-parses** and **strict-JSON output**. Larger MoE/dense coders (≥26B) clear both;
-several otherwise-capable models fail one gate — Qwen2.5-Coder (tool-call
-delimiter), gpt-oss-20b and Granite-4.1-8B (JSON), Qwen3-14B (JSON). The
-[3090 POC](docs/nvidia-3090-poc-summary.md) has the full model-search matrix and
-[performance-analysis.md](docs/performance-analysis.md) the throughput comparison.
+Tested on **four boxes, smallest → largest VRAM**. Each runs the biggest model it
+can hold; pick by **loop wall-clock** — measured time to a `cargo test`-green
+crate (*quality* ranking is future work; this is **speed only**). All served by a
+local `llama-server`, model loaded once and reused across every call.
+
+| Box (VRAM) | Best models, by loop wall-clock | Measured? |
+|------------|---------------------------------|-----------|
+| **RTX 3060 · 12 GB** | Qwable-v1 (MoE, experts→RAM offload); **Ornith-1.0-9B** Q6 fits whole | throughput only — loop pending |
+| **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s | ✅ **fully loop-timed** |
+| **RTX 3090 · 24 GB** | **Qwen3-Coder-30B ~3m30s**; also Gemma-4-26B (*best code*), Qwen3.6-35B-MTP, Gemma-4-31B+E2B draft | qwen3-coder loop-timed; rest throughput-verified |
+| **M1 Max · 64 GB** | **gpt-oss-20b 3m34s** › Ornith-1.0-35B (MLX) 6m06s › Qwen3.6-35B-MTP 8m01s | ✅ loop-timed; holds *any* model |
+
+Notes: **16 GB** runs MoE coders ≤30B (light `--n-cpu-moe`) + the dense 9B Ornith;
+**24 GB** fits 30–35B whole; **64 GB** fits anything (and MLX is ~1.35× GGUF decode
+on Apple Silicon). The **same model is faster on a bigger/faster box** (Qwen3-Coder:
+~3m30s on the 3090 vs 6m38s on the 5060; gpt-oss: 1m13s on the 5060 vs 3m34s on the
+M1 Max). Per-box detail: [5060](docs/nvidia-5060-poc-summary.md) ·
+[3090](docs/nvidia-3090-poc-summary.md) · [3060](docs/arch-nvidia-3060-poc-summary.md) ·
+[M1 Max](docs/mac-poc-summary.md).
+
+**Two gates a model must clear** (hardware-independent): **native tool-calling
+llama.cpp parses** + **strict-JSON output**. Larger MoE/dense coders (≥26B) clear
+both; smaller *general* models often fail one — Qwen2.5-Coder (tool-call
+delimiter), Qwen3-8B / Qwen3-14B (JSON), Phi-4 (no tool calls) — while a
+*purpose-trained* coder like **Ornith-1.0-9B clears both at 9B**. gpt-oss-20b
+fails the JSON gate unaided but the harness's `emit` self-heal carries it through.
+See the [3090 POC](docs/nvidia-3090-poc-summary.md) for the full model-search
+matrix and [performance-analysis.md](docs/performance-analysis.md) for throughput.
 
 > The binary and crate are named `bootstrap`; the git repository is
 > `local-llm-loop`.
