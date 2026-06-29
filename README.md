@@ -31,7 +31,7 @@ Apple Silicon spans M1 8 GB → M1 Max 64 GB.
 | Box (VRAM) | Best models, by loop wall-clock | Measured? |
 |------------|---------------------------------|-----------|
 | **RTX 3060 · 12 GB** | **Ornith-1.0-9B+MTP 4m29s** › Qwen3-Coder-30B 7m20s › Ornith-1.0-9B 10m58s › Qwen3.6-35B 13m40s | ✅ **fully loop-timed** |
-| **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B+MTP 2m15s › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s | ✅ **fully loop-timed** |
+| **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B+MTP 2m15s › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s › Ornith-1.0-35B 9m56s | ✅ **fully loop-timed** |
 | **RTX 3090 · 24 GB** | **Qwen3-Coder-30B ~3m30s**; also Gemma-4-26B (*best code*), Qwen3.6-35B-MTP, Gemma-4-31B+E2B draft | qwen3-coder loop-timed; rest throughput-verified |
 | **M1 Max · 64 GB** | **gpt-oss-20b 3m34s** › Ornith-1.0-35B (MLX) 6m06s › Qwen3.6-35B-MTP 8m01s | ✅ loop-timed; holds *any* model |
 
@@ -55,6 +55,7 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 | Qwen3.6-27B (dense) | 5060 Ti · 16 GB | offload | ~75 min 🐌 |
 | Qwen3.6-35B-A3B (no MTP) | **3060 · 12 GB** | `--n-cpu-moe` | 13m40s |
 | Ornith-1.0-9B | **3060 · 12 GB** | resident | 10m58s |
+| Ornith-1.0-35B | 5060 Ti · 16 GB | `--n-cpu-moe` | 9m56s |
 | Gemma-4-26B-A4B | 5060 Ti · 16 GB | `--n-cpu-moe` | 9m02s |
 | Qwen3.6-35B-A3B-MTP | M1 Max · 64 GB | whole + MTP | 8m01s |
 | Qwen3-Coder-30B-A3B | **3060 · 12 GB** | `--n-cpu-moe` | 7m20s |
