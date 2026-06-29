@@ -50,6 +50,9 @@ want ornith9  && dl bartowski/deepreinforce-ai_Ornith-1.0-9B-GGUF  deepreinforce
 # 5d. Ornith-1.0-9B + bundled MTP head — VERIFIED self-spec (~1.5× decode 44→66 t/s, 2m15s loop).
 #     The -kl-Q8_0.gguf has the next-token head baked in; serve via --spec-type draft-mtp (no 2nd model).
 want ornith9mtp && dl protoLabsAI/Ornith-1.0-9B-MTP-GGUF  ornith-9b-mtp-kl-Q8_0.gguf  ornith-9b-mtp
+# 5e. Ornith-1.0-35B qwen35moe — VERIFIED stretch coder (Q4, ~20 GB → --n-cpu-moe offload; 9m56s loop).
+#     Better on 24 GB+ where it fits whole; on 16 GB the 9B+MTP is the faster Ornith.
+want ornith35 && dl bartowski/deepreinforce-ai_Ornith-1.0-35B-GGUF  deepreinforce-ai_Ornith-1.0-35B-Q4_K_M.gguf  ornith-35b
 # 6. Gemma quality candidate (the plan wanted "Gemma-4"; Gemma-3-27B is the available analog)
 want gemma3   && dl unsloth/gemma-3-27b-it-GGUF               gemma-3-27b-it-Q4_K_M.gguf                   gemma-3-27b
 

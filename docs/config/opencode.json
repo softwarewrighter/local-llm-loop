@@ -143,7 +143,7 @@
           "options": {}
         },
         "ornith-9b-mtp": {
-          "name": "Ornith-1.0-9B + MTP head (resident self-spec; RTX 3060 / 5060 Ti — ~1.5x decode)",
+          "name": "Ornith-1.0-9B + MTP head (resident self-spec; RTX 3060 / 5060 Ti \u2014 ~1.5x decode)",
           "tools": true,
           "cost": {
             "input": 0,
@@ -151,6 +151,19 @@
           },
           "limit": {
             "context": 32768,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "ornith-35b": {
+          "name": "Ornith-1.0-35B qwen35moe Q4 (RTX 5060 Ti; --n-cpu-moe offload, verified)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 16384,
             "output": 4096
           },
           "options": {}

@@ -187,6 +187,7 @@ gpt-oss did 128 requests from one load). Measured 2026-06-28 from loop log times
 | **Ornith-1.0-9B** Q8 | **dense 9B**, resident | **4m 42s** | ~44 t/s | 0 | ✅ 2/2 |
 | **Qwen3-Coder-30B-A3B** | MoE, `--n-cpu-moe 16` | **6m 38s** | ~55 t/s | 15 | ✅ 2/2 |
 | **Gemma-4-26B-A4B** MXFP4 | MoE, `--n-cpu-moe 16` | **9m 02s** | ~61 t/s | 0 | ✅ 2/2 |
+| **Ornith-1.0-35B** | MoE `qwen35moe`, `--n-cpu-moe 28` | **9m 56s** | ~44 t/s | 0 | ✅ 2/2 |
 | Qwen3.6-27B | dense, offload | **~75 min** 🐌 | slow | — | ✅ 2/2 |
 
 > **MTP self-spec is a free ~1.5× on Ornith-9B.** A/B at the same `protoLabsAI`
@@ -226,10 +227,44 @@ gpt-oss did 128 requests from one load). Measured 2026-06-28 from loop log times
 | Qwable (Claude-Fable distill) | ~30B IQ4_XS | Gate-1 OK but **wanders/malforms** (probed `bootstrap --version`, mis-shaped the write tool) and is **slow** (18 GB → offload). Same family as Qwythos. |
 | VibeThinker-3B | 3B | Math/competition **reasoner**, not an agentic coder; weak on Rust by design. |
 
+### ✗ DeepSeek-Coder-V2-Lite-16B — fits + fast, but **no function-calling training**
+
+A separate failure class worth documenting because it is *not* a fit, speed, or
+config problem — it's a **model-capability** one. The 16B MoE (2.4B active) **fits
+whole** (Q4_K_M ~10 GB, ~12.5 GB resident with KV) and is **fast** (~44 t/s decode,
+~760 t/s prefill). It still **cannot drive the loop**:
+
+- **Authoritative status:** the base **DeepSeek-Coder-V2-Lite-Instruct does not
+  support function calling** (Fireworks AI lists it as unsupported) and scores
+  **0.0 on SWE-bench Verified** — it's a *code-completion* model, not an agent.
+  The community `MFDoom/...-tool-calling` build and `Trelis/...-function-calling`
+  models exist precisely because the base model lacks it (a bolted-on template or
+  a re-fine-tune).
+- **Format gotcha (fixed, but not enough):** Coder-V2 (2024) expects tool calls as
+  **JSON `{"name":…, "parameters":…}` with tools injected into the *user* message**
+  — *not* the DeepSeek-V3 `<｜tool▁calls▁begin｜>` delimiters. The bundled
+  `deepseek-ai-DeepSeek-V3.1/3.2.jinja` templates emit V3 delimiters **and** inject
+  `<think>` (V3 is a reasoning model), which makes this non-reasoning model spiral
+  into `<think></think>` garbage. `--chat-template chatml` / `deepseek2` give prose
+  or gibberish. A hand-written JSON-format template (`coder-v2-json-tools.jinja`)
+  is the only one that parses.
+- **The decisive test:** with that correct template, **gate 1 passes only under
+  `tool_choice:"required"`** (grammar-forced: `list_dir {"path":"."}` parses). Under
+  **`auto`** — what an agent actually uses — the model **writes code instead of
+  calling tools**; llama.cpp's strict peg-native parser then **HTTP 500s** on the
+  non-tool output. The loop failed **3/3 plan tries, 14 rejections, 10m16s**.
+
+**Verdict:** correctly configured, single forced calls work; an `auto`-driven
+multi-step loop does not — consistent with SWE-bench Verified 0.0. **Not in the
+working set.** Do not re-attempt without a function-calling *fine-tune* of the model.
+
 ### The capability ceiling
-Reliable coding on this harness starts at **~20–30B (MoE or dense)**. Below
-~14B, models either fail gate 1 (tool-calling) or — once the harness stops
-masking it — complete the loop but emit non-building code.
+Reliable coding on this harness starts at **~20–30B (MoE or dense)** — **or a
+purpose-trained smaller agentic coder** (Ornith-1.0-9B at 9B). Below that, general
+models fail gate 1 (tool-calling) or emit non-building code; and a model can **fit
+and be fast yet still lack the function-calling training** to drive the loop at all
+(DeepSeek-Coder-V2-Lite). Fit + speed are necessary, not sufficient — **agentic
+tool-use training is the real gate.**
 
 ### Harness hardening vs. capability — the ICL/ICRL finding
 We removed every *harness* failure mode in turn: the **`emit`** self-healing
