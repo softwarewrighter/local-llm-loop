@@ -293,6 +293,31 @@ with the same verified output** and is the only one of the three that never has
 to offload — so it's the comfortable choice when capacity matters more than
 turn latency.
 
+### MLX vs GGUF on the M1 Max — Ornith-1.0-35B (2026-06-28)
+
+The first **MLX-runtime** numbers here. Ornith-1.0-35B (Qwen-3.5 MoE, ~3B active)
+run two ways on the M1 Max: GGUF via `llama-server` (b9770) and MLX via
+`mlx_lm.server` (mlx-lm 0.31.3). Both clear gate 1 (native `tool_calls`). Full
+family writeup: [plan-ornith-models.md](plan-ornith-models.md).
+
+| Ornith-35B | Runtime | Decode | Loop → working code | `cargo test` |
+|------------|---------|-------:|--------------------:|:------------:|
+| **MLX 6-bit** | mlx_lm.server | **55.6 t/s** | **6m06s** (clean, 3 steps) | ✅ 3/3 |
+| GGUF Q6_K | llama.cpp | 40.7 t/s | 8m40s (1 wander + 1 Skip) | ✅ 2/2 |
+
+- **MLX wins ~1.35× on decode and ~1.4× on wall-clock-to-working-code** — Apple's
+  framework is better tuned for Metal than llama.cpp's generic Metal backend.
+  (For reference the 9B-Dense shows the same shape: MLX 8-bit ~37 vs GGUF Q8_0
+  ~33 t/s.)
+- **Both end green**, so capability is equal; the gap is speed + reliability. The
+  GGUF run's one blemish was an off-task file write *outside* the workspace (a
+  llama.cpp Qwen-template/tool quirk, caught by the harness's external-dir guard)
+  — the same weights ran clean under MLX.
+- **Takeaway:** on Apple Silicon, prefer **MLX** for these Qwen-3.5 models; it's
+  the faster, cleaner default and `mlx_lm.server` does native tool-calling +
+  `--draft-model` speculative decoding. GGUF/llama.cpp remains the portable path
+  and the apples-to-apples tie to every other row here.
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor
