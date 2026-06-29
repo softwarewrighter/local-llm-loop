@@ -22,7 +22,7 @@ local `llama-server`, model loaded once and reused across every call.
 | Box (VRAM) | Best models, by loop wall-clock | Measured? |
 |------------|---------------------------------|-----------|
 | **RTX 3060 · 12 GB** | **Ornith-1.0-9B+MTP 4m29s** › Qwen3-Coder-30B 7m20s › Ornith-1.0-9B 10m58s › Qwen3.6-35B 13m40s | ✅ **fully loop-timed** |
-| **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s | ✅ **fully loop-timed** |
+| **RTX 5060 Ti · 16 GB** | **gpt-oss-20b 1m13s** › Ornith-1.0-9B+MTP 2m15s › Ornith-1.0-9B 4m42s › Qwen3-Coder-30B 6m38s › Gemma-4-26B 9m02s | ✅ **fully loop-timed** |
 | **RTX 3090 · 24 GB** | **Qwen3-Coder-30B ~3m30s**; also Gemma-4-26B (*best code*), Qwen3.6-35B-MTP, Gemma-4-31B+E2B draft | qwen3-coder loop-timed; rest throughput-verified |
 | **M1 Max · 64 GB** | **gpt-oss-20b 3m34s** › Ornith-1.0-35B (MLX) 6m06s › Qwen3.6-35B-MTP 8m01s | ✅ loop-timed; holds *any* model |
 
@@ -55,6 +55,7 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 | **Ornith-1.0-9B + MTP** | **3060 · 12 GB** | resident + MTP | **4m29s** |
 | gpt-oss-20b | M1 Max · 64 GB | whole | 3m34s |
 | Qwen3-Coder-30B-A3B | 3090 · 24 GB | whole | ~3m30s |
+| **Ornith-1.0-9B + MTP** | 5060 Ti · 16 GB | resident + MTP | **2m15s** |
 | **gpt-oss-20b** MXFP4 | 5060 Ti · 16 GB | whole (FP4) | **1m13s** 🥇 |
 
 Two things the table makes plain: a **fast small model can beat a slow big one across

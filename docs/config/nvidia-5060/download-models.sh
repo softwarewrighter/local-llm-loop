@@ -47,6 +47,9 @@ want qwen36   && dl unsloth/Qwen3.6-27B-GGUF                   Qwen3.6-27B-Q4_K_
 want gemma4   && dl unsloth/gemma-4-26B-A4B-it-GGUF           gemma-4-26B-A4B-it-MXFP4_MOE.gguf            gemma4-26b
 # 5c. Ornith-1.0-9B Q8 dense — VERIFIED small coder (fits whole; ~4m42s loop, SWE-bench 69.4)
 want ornith9  && dl bartowski/deepreinforce-ai_Ornith-1.0-9B-GGUF  deepreinforce-ai_Ornith-1.0-9B-Q8_0.gguf  ornith-9b
+# 5d. Ornith-1.0-9B + bundled MTP head — VERIFIED self-spec (~1.5× decode 44→66 t/s, 2m15s loop).
+#     The -kl-Q8_0.gguf has the next-token head baked in; serve via --spec-type draft-mtp (no 2nd model).
+want ornith9mtp && dl protoLabsAI/Ornith-1.0-9B-MTP-GGUF  ornith-9b-mtp-kl-Q8_0.gguf  ornith-9b-mtp
 # 6. Gemma quality candidate (the plan wanted "Gemma-4"; Gemma-3-27B is the available analog)
 want gemma3   && dl unsloth/gemma-3-27b-it-GGUF               gemma-3-27b-it-Q4_K_M.gguf                   gemma-3-27b
 
