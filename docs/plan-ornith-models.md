@@ -193,11 +193,15 @@ framework is better tuned for Metal. Prefill methodology differs (pp512 vs a
 | Runtime | Loop wall-clock | Steps | `cargo test` | Run shape |
 |---------|----------------:|:-----:|:------------:|-----------|
 | **MLX 6-bit** | **6m06s** | 3 (all *Continue*) | ✅ **3/3** | clean single crate (even added a `--times 0` test) |
-| GGUF Q6_K | *(in progress)* | — | — | ⚠️ **wandered on first attempt** — the planner hallucinated a write to `/Users/brian/.../fish_greeting.fish` (auto-rejected as external dir), then retried |
+| GGUF Q6_K | **8m40s** | 4 (1 *Skip*) | ✅ **2/2** | **recovered from a first-attempt wander** — the planner hallucinated a write to `/Users/brian/.../fish_greeting.fish` (auto-rejected as external dir); the reviewer *Skip*ped and it then completed a working crate |
 
-The MLX run is clean and fast; the GGUF run exposed an Ornith reasoning-model
-**wander** (off-task file write outside the workspace) under the llama.cpp Qwen
-template — a tool/template-interaction quirk worth a closer look, not necessarily
-a model-capability gap. Full cross-runtime + cross-hardware numbers consolidate
-into [performance-analysis.md](performance-analysis.md) as the GGUF loop A/B and
-the small-card (3060/5060) 9B runs complete.
+→ **MLX produces working code ~1.4× faster (6m06s vs 8m40s) and cleaner** (0
+retries vs a wander + a *Skip*). Both end green, so the **capability** is equal;
+the gap is **wall-clock + reliability**, and on this box MLX wins both. The GGUF
+wander — an off-task file write *outside the workspace* under the llama.cpp Qwen
+template — is the one blemish: a tool/template-interaction quirk (the harness's
+external-directory guard caught it) worth a closer look, not a model-capability
+gap, since the same weights ran clean under MLX. Net for the M1 Max: **the 35B is
+a verified working coder in both runtimes; MLX is the faster, cleaner default.**
+Cross-hardware numbers (and the small-card 3060/5060 9B runs) consolidate into
+[performance-analysis.md](performance-analysis.md) as they complete.
