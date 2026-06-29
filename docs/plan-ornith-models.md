@@ -4,8 +4,9 @@
 self-improving open-source **family for agentic coding** — post-trained with RL
 that optimizes *both* the solution rollout and the scaffold that drives it. This
 doc is the research + deployment plan for running Ornith on this project's harness
-across the four test boxes (RTX 3060 12 GB, RTX 5060 Ti 16 GB, RTX 3090 24 GB,
-M1 Max 64 GB). Companion: [performance-analysis.md](performance-analysis.md).
+across the GPU tiers in the [test fleet](test-fleet.md) — primarily RTX 3060 12 GB,
+RTX 5060 Ti 16 GB, RTX 3090 24 GB, and M1 Max 64 GB (the boxes with measured
+results so far). Companion: [performance-analysis.md](performance-analysis.md).
 
 - **Date:** 2026-06-28
 - **License:** MIT (all sizes)
@@ -75,7 +76,7 @@ the existing `llamacpp` provider — add an `mlx` provider pointing at
 
 **9B-Dense:** Q4_K_M 5.63 · Q5_K_M 6.47 · Q6_K 7.36 · Q8_0 9.53 · bf16 17.92 GB
 **35B-MoE:** Q4_K_M 21.17 · Q5_K_M 24.73 · Q6_K 28.51 · Q8_0 36.90 · bf16 69.38 GB · **APEX-MTP 26.23**
-**397B-MoE:** smallest is IQ1_S ≈ **81.8 GB** (3-part) → Q4_K_M ≈ 242 GB. **Fits none of the four boxes** (over even the M1 Max's 64 GB).
+**397B-MoE:** smallest is IQ1_S ≈ **81.8 GB** (3-part) → Q4_K_M ≈ 242 GB. **Fits no box in the fleet** (over even the M1 Max's 64 GB).
 
 ## Speculative decoding
 
