@@ -183,10 +183,19 @@ gpt-oss did 128 requests from one load). Measured 2026-06-28 from loop log times
 | Model | Type / fit | **Loop wall-clock** | Decode `tg128` | Retries | `cargo test` |
 |-------|-----------|--------------------:|---------------:|:-------:|:------------:|
 | **gpt-oss-20b** MXFP4 | MoE, resident | **1m 13s** 🥇 | ~138 t/s | 0 | ✅ 2/2 |
-| **Ornith-1.0-9B** Q8 | **dense 9B**, resident | **4m 42s** 🥈 | ~33 t/s | 0 | ✅ 2/2 |
-| **Qwen3-Coder-30B-A3B** | MoE, `--n-cpu-moe 16` | **6m 38s** 🥉 | ~55 t/s | 15 | ✅ 2/2 |
+| **Ornith-1.0-9B + MTP** | **dense 9B + self-spec**, resident | **2m 15s** 🥈 | **66 t/s** (→87 @ 0.94 accept) | 0 | ✅ 3/3 |
+| **Ornith-1.0-9B** Q8 | **dense 9B**, resident | **4m 42s** | ~44 t/s | 0 | ✅ 2/2 |
+| **Qwen3-Coder-30B-A3B** | MoE, `--n-cpu-moe 16` | **6m 38s** | ~55 t/s | 15 | ✅ 2/2 |
 | **Gemma-4-26B-A4B** MXFP4 | MoE, `--n-cpu-moe 16` | **9m 02s** | ~61 t/s | 0 | ✅ 2/2 |
 | Qwen3.6-27B | dense, offload | **~75 min** 🐌 | slow | — | ✅ 2/2 |
+
+> **MTP self-spec is a free ~1.5× on Ornith-9B.** A/B at the same `protoLabsAI`
+> Q8 (MTP head bundled in the GGUF; `--spec-type draft-mtp`, +224 MiB draft
+> context): **decode 44 → 66 t/s** (up to 87 at 0.94 draft acceptance),
+> distribution-lossless, no second model. The loop dropped 5m40s → 2m15s, but that
+> overstates MTP (the MTP-off run took 3 retries + more steps) — **decode t/s is
+> the robust signal**, matching the 3060's 1.3–1.7×. Per "prefer MTP when
+> available," this is the default Ornith-9B config on the 5060.
 
 **Wall-clock ≠ decode speed.** Loop time ≈ *decode × tokens-generated ×
 (1 + retries) × steps*, so the ranking diverges from raw t/s:
