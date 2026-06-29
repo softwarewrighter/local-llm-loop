@@ -14,10 +14,19 @@ The harness is **model-agnostic** — it shells out to `opencode run --model
 
 ## Which model on which box
 
-Tested on **four boxes, smallest → largest VRAM**. Each runs the biggest model it
-can hold; pick by **loop wall-clock** — measured time to a `cargo test`-green
-crate (*quality* ranking is future work; this is **speed only**). All served by a
-local `llama-server`, model loaded once and reused across every call.
+The table below groups **measured loop results by GPU tier**, smallest → largest
+VRAM. They come from a growing **test fleet of 8–9 machines** (several share a GPU
+type but differ in CPU/RAM/OS, and several are owned but not yet benched) — see
+**[test-fleet.md](docs/test-fleet.md)** for the full inventory and per-box role.
+Each box runs the biggest model it can hold; pick by **loop wall-clock** —
+measured time to a `cargo test`-green crate (*quality* ranking is future work;
+this is **speed only**). All served by a local `llama-server`, model loaded once
+and reused across every call.
+
+**Priorities:** 24 GB is the sweet spot (holds a 30–35B MoE coder whole — primary
+focus); 16 GB is great where it works (5060 Ti ✅, A2-16 GB next); **12 GB is
+weak for *coding*** and may be better aimed at **admin / non-coding** agent tasks;
+Apple Silicon spans M1 8 GB → M1 Max 64 GB.
 
 | Box (VRAM) | Best models, by loop wall-clock | Measured? |
 |------------|---------------------------------|-----------|

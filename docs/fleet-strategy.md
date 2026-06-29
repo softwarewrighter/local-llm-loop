@@ -7,11 +7,14 @@ throughput analysis — see [performance-analysis.md](performance-analysis.md)
 (measured RTX 3090 baseline + M1 Max / P40 predictions) and
 [older-hardware.md](older-hardware.md) (Tesla M40 / K80).
 
-> ⚠️ **Mostly predictions.** Only **M1 Max** and **RTX 3090** have actually run
-> the project. Everything about the P40, M40, K80, M10, and CPU-only nodes is
-> derived from hardware characteristics and the measured 3090 baseline. Treat the
-> tiers and numbers as a starting hypothesis — **measure each node once and route
-> on real data** (see "Measure first").
+> ⚠️ **Part measured, part prediction.** The project has now run on **M1 Max,
+> RTX 3090, RTX 5060 Ti, and RTX 3060** (see the [test fleet](test-fleet.md) for
+> the full box inventory and status). A **dual-P40 24 GB** and an **A2 16 GB** box
+> are owned and queued to test — so the P40 row below moves from pure prediction
+> toward measurement soon; the M40, K80, M10, and CPU-only nodes remain derived
+> from hardware characteristics + the measured 3090 baseline. Treat unmeasured
+> tiers as a starting hypothesis — **measure each node once and route on real
+> data** (see "Measure first").
 
 ## What the workload shape changes
 
