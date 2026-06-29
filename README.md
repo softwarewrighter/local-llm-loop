@@ -263,6 +263,8 @@ PLAN_ONLY=1 ./scripts/demo-orchestrate.sh   # one cheap planner call
 - [docs/older-hardware.md](docs/older-hardware.md) — older 24 GB GPUs (Tesla M40 / K80) for an overnight batch fleet
 - [docs/fleet-strategy.md](docs/fleet-strategy.md) — deploying across heterogeneous nodes (GPU/CPU tiers, scheduling, power/$) for overnight batch runs
 - [docs/glm-models.md](docs/glm-models.md) — pointing the harness at GLM-5.2 (3-bit, big-RAM CPU + A2 offload)
+- [docs/plan-ornith-models.md](docs/plan-ornith-models.md) — Ornith-1.0 family (Qwen-3.5/Gemma-4 agentic coders): GGUF/MLX/MTP ecosystem, per-system fit, and measured M1 Max MLX-vs-GGUF results
+- [docs/future-research.md](docs/future-research.md) — deferred investigations: DeepSeek-V4/DSpark self-speculation, and speculative decoding with an offloaded target on the RTX 3090 + Xeon box
 
 ## License
 
