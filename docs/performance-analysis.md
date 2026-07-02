@@ -318,6 +318,30 @@ family writeup: [plan-ornith-models.md](plan-ornith-models.md).
   `--draft-model` speculative decoding. GGUF/llama.cpp remains the portable path
   and the apples-to-apples tie to every other row here.
 
+### Dense + MTP on the M1 Max — Qwopus3.6-27B-Coder (2026-07-02)
+
+The cleanest **dense-vs-MoE** datapoint on this box. `Qwopus3.6-27B-Coder-MTP`
+(Qwen-3.6 **dense** 27B, Opus-distilled, **no-think** — 67% SWE-bench off-thinking)
+Q6_K via `llama-server`, with its **MTP head** (`--spec-type draft-mtp`). Clears
+gate 1; loop completes; `cargo test` **2/2**.
+
+| Qwopus-27B (dense) | Prefill | Decode | Loop → working code |
+|--------------------|--------:|-------:|--------------------:|
+| MTP **off** (llama-bench) | 125 t/s | 12.3 t/s | — |
+| MTP **on** (77% accept) | — | **16.0 t/s** (~1.30×) | **19m43s** (2/2) |
+
+- **MTP works well here** — 77% draft acceptance (the highest measured; vs 64% for
+  Qwen3.6-35B-MTP), lifting decode ~1.30×. But it can't overcome the architecture.
+- **Dense is the story.** At 16 t/s the loop takes **19m43s** — ~2.5–3× the MoE
+  coders on the *same box* (Ornith-35B MLX 6m06s, Qwen3.6-35B-MTP 8m01s), all of
+  which decode 3–4× faster because only ~3B params are active per token. This is
+  **not** a reasoning-token tax: it's a no-think model (0 `<think>` blocks), so the
+  20 min is pure dense decode.
+- **Takeaway:** a genuinely strong coder, but **dense ⇒ too slow on Metal**. Its
+  better home is a box where it fits whole on a fast GPU — the **RTX 3090** (Q6_K
+  is 22.4 GB, fits 24 GB whole; ~4–5× the M1 Max's decode with real tensor cores).
+  On the M1 Max the MoE coders remain the practical picks.
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor

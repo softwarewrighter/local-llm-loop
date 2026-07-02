@@ -53,6 +53,7 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 | Model | Box (VRAM tier) | Placement | **Loop wall-clock** |
 |-------|-----------------|-----------|--------------------:|
 | Qwen3.6-27B (dense) | 5060 Ti · 16 GB | offload | ~75 min 🐌 |
+| Qwopus3.6-27B-Coder (dense) + MTP | M1 Max · 64 GB | whole + MTP | 19m43s |
 | Qwen3.6-35B-A3B (no MTP) | **3060 · 12 GB** | `--n-cpu-moe` | 13m40s |
 | Ornith-1.0-9B | **3060 · 12 GB** | resident | 10m58s |
 | Ornith-1.0-35B | 5060 Ti · 16 GB | `--n-cpu-moe` | 9m56s |
