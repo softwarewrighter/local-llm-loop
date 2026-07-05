@@ -342,6 +342,18 @@ gate 1; loop completes; `cargo test` **2/2**.
   is 22.4 GB, fits 24 GB whole; ~4–5× the M1 Max's decode with real tensor cores).
   On the M1 Max the MoE coders remain the practical picks.
 
+> **Projected — RTX 3090 24 GB (untested).** Dense decode is bandwidth-bound, so
+> the 3090's ~936 GB/s (**2.3×** the M1 Max) should lift decode from 12.3 →
+> **~30–40 t/s** (anchored to the measured **~41 t/s for Qwen3.6-27B dense** on the
+> 3090), and MTP's 1.30× → **~40–55 t/s**. Prefill jumps **~10×** (real tensor
+> cores vs none) — the regime agentic coding leans on hardest. Net: the loop should
+> fall from **19m43s to roughly ~5–8 min** — night-and-day, and why the 3090 is its
+> home. **Fit caveat:** Q6_K (22.4 GB) + the q8_0 KV at ctx 32k (~2 GB on a 27B) is
+> borderline on 24 GB and may OOM whole-resident — use **Q5_K_M (19.5 GB)** for
+> full-context headroom (negligible quality loss). Even so it stays **dense**, so it
+> won't beat the A3B MoE coders on the 3090 (Qwen3-Coder-30B ≈ 3m30s whole-resident);
+> the 3090 makes Qwopus *practical*, not *fastest*.
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor
