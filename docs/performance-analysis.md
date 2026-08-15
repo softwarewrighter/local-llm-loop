@@ -354,6 +354,32 @@ gate 1; loop completes; `cargo test` **2/2**.
 > won't beat the A3B MoE coders on the 3090 (Qwen3-Coder-30B ≈ 3m30s whole-resident);
 > the 3090 makes Qwopus *practical*, not *fastest*.
 
+### Qwen3.5-27B Q4_K_M on the M1 Max -- correct but extremely slow (2026-08-15)
+
+The text-only 15.59 GiB Unsloth Q4_K_M was run at 32k context with full Metal
+offload, q8_0 KV, flash attention, and no vision projector. This 27B dense hybrid
+uses 48 Gated DeltaNet and 16 attention blocks, but all parameters remain active
+during decode. The llama-server process showed 24.1 GiB RSS after the run.
+
+| Metric / gate | Measured result |
+|---------------|-----------------|
+| Native tool call | ✅ exact `write_file` call |
+| Structured plan | ✅ first try; valid six-step `emit` envelope |
+| Step/review envelopes | ✅ all first try; no harness retries |
+| Decode | ~12.1 t/s at gate; ~9-11 t/s in the growing loop |
+| Prefill | 104.8 t/s at gate; roughly 100-220 t/s in-loop |
+| Full loop | ✅ five executed steps, one skipped; **2h24m21.34s** |
+| Independent build | ✅ `cargo test` **2/2**; valid repeat and zero-input behavior |
+
+Code quality was good: a small clap CLI, a pure `greet()` function, correct
+newline-separated output, explicit zero validation, and the two requested tests.
+Agent efficiency was exceptionally poor. Most phases generated thousands of
+reasoning tokens and repeatedly looked for files at the workspace root before
+recovering to the nested `greet/` crate. Step 4 completed the remaining coding
+work, so its reviewer skipped step 5; the harness still executed the already
+satisfied test step. The final `Stop` meant “all work complete,” not a real
+intervention request. This is the slowest successful loop in the README table.
+
 ### Laguna S 2.1 IQ3_XXS on the M1 Max -- measured failure (2026-08-15)
 
 Laguna S 2.1 (118B-A8B MoE) was tested with the cached 41.24 GiB

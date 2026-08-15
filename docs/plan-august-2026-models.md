@@ -19,7 +19,7 @@ memory**. At least one candidate will later be repeated on the **RTX 3090 with
 |-----------|--------------|-------------|----------------|----------------|
 | **Laguna S 2.1** | 118B total / 8B active MoE | **Measured failure:** tool gate and plan pass; full loop stopped after 13m03s in step 2 with no progress and non-compiling code | Fits at 16k; ~28 t/s decode, but this quant/run is not agent-efficient | Current 41 GB quant cannot fit wholly in VRAM; offload-only, low priority |
 | **NVIDIA Nemotron 3.5 Lightning 30B-A3B** | 30B total / 3B active hybrid MoE (23 Mamba, 6 attention, 23 MoE blocks) | **Measured gate failure:** official ggml-org Q4_0 loads and passes native tool use, but fails 3/3 plan attempts; an Unsloth GGUF was also rejected as malformed | Fits whole at 32k; ~56-62 t/s decode, but fails this harness's plan protocol | 18.90 GB target should fit with conservative context; loop quality is already disqualifying unless prompting changes |
-| **Qwen3.8-27B** | 27B dense | Released 2026-08-14; not downloaded or tested here | Expected to fit as a 4-6 bit quant; dense decode may be slow on Metal | Quant + KV must stay under 24 GB; target roughly 18-20 GB weights for headroom |
+| **Qwen3.5-27B** | 27B dense hybrid (48 Gated DeltaNet, 16 attention blocks) | **Measured success:** Q4_K_M completes the loop and produces a correct 2/2-test crate, but takes 2h24m21s | Fits whole at 32k; ~9-12 t/s decode and extremely long reasoning trajectories | 16.74 GB file should fit, but 24.1 GiB M1 process RSS makes 24 GB VRAM context headroom uncertain |
 
 The local cache says **Laguna S 2.1**, not “Laguna S 5.1.” Both the Hugging Face
 repository and downloaded filename identify version 2.1. Use that exact name in
@@ -33,16 +33,15 @@ or silently diverge from them.
 
 ## Test order
 
-1. **Qwen3.8-27B / M1 Max** -- choose one reproducible GGUF, record its source
-   revision and size, and compare this dense model with Qwopus3.6-27B. Start with
-   GGUF for cross-hardware parity; add MLX only as a separately labeled run.
+1. **Qwen3.5-27B / M1 Max -- complete.** The GGUF run produced correct code but
+   is far too slow for the default loop; an MLX run would need separate labeling.
 2. **Nemotron follow-up (optional)** -- retry only after changing the agent
    prompt/tool policy. The official GGUF and runtime work; the model repeatedly
    chooses unrelated filesystem inspection instead of the required plan emit.
 3. **Laguna follow-up (optional)** -- retry only with a tested upstream/poolside
    runtime change or a tighter reasoning/tool-turn policy. The first 16k run is
    already sufficient to reject this setup as a practical default.
-4. **RTX 3090 follow-up** -- start with whichever of Qwen3.8 or Nemotron has the
+4. **RTX 3090 follow-up** -- start with whichever of Qwen3.5 or Nemotron has the
    best M1 Max loop quality and a measured model + KV footprint below 24 GB.
 
 ## Measured attempt -- Laguna S 2.1 on M1 Max (2026-08-15)
@@ -96,6 +95,32 @@ GGUF fits comfortably, loads, and performs native tool calls quickly, but is
 not a drop-in planner for this harness. A narrowly scoped execution or routing
 role remains plausible; a planner retry should first change its prompt/tool
 policy rather than its quantization.
+
+## Measured attempt -- Qwen3.5-27B on M1 Max (2026-08-15)
+
+| Item | Result |
+|------|--------|
+| Model | `unsloth/Qwen3.5-27B-GGUF`, snapshot `3221f17`, `Q4_K_M` |
+| Weight file | 16,740,812,704 bytes (15.59 GiB); text-only, no vision projector |
+| Architecture | 27B dense hybrid: 48 Gated DeltaNet and 16 attention blocks; all parameters active |
+| Runtime | llama.cpp `04b2b72cb` / build 10008; OpenCode 1.17.18 |
+| Launch | full Metal, 32,768 context, one slot, q8_0 KV cache, flash attention, Jinja |
+| Load / memory | about 8.2 s after download; process RSS snapshot 24.1 GiB |
+| Gate 1 | **pass** -- exact native `write_file(path="hello.txt", content="hi")` call |
+| Plan / envelopes | **pass** -- plan, five step results, and five reviews all accepted first try |
+| Run shape | six planned steps; step 5 skipped after step 4 completed main wiring and tests; five steps executed |
+| Observed speed | gate: 104.8 t/s prefill, 12.1 t/s decode; loop: roughly 100-220 t/s prefill and 9-11 t/s decode |
+| Wall-clock | **2h24m21.34s** (`real 8661.34`); no harness retries |
+| Independent validation | **pass** -- 2/2 `cargo test`; `--times 3` correct; `--times 0` exits 1 with a clear error |
+| Artifact directory | `/var/folders/wm/4h2wt33j4sv97l8098515h1h0000gn/T/bootstrap-greeter.XXXXXX.zCp92GlDcM` |
+
+This is a successful quality result and a severe efficiency failure. The model
+produced clean, correct Rust and recovered from every mistaken root-level file
+lookup, but repeatedly spent thousands of reasoning tokens before simple tool
+calls. Dense 27B decode on Metal plus those trajectories made this tiny task
+slower than every previously successful loop in the README table. The final
+review used `Stop` because all work was complete, not because intervention was
+actually required.
 
 ## Standard run record
 

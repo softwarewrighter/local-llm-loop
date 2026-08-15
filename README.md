@@ -44,12 +44,12 @@ faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
 [5060](docs/nvidia-5060-poc-summary.md) · [3090](docs/nvidia-3090-poc-summary.md) ·
 [3060 (measured)](docs/nvidia-3060-12-results.md) · [M1 Max](docs/mac-poc-summary.md).
 
-**August 2026 candidates:** Laguna S 2.1 and Nemotron 3.5 Lightning 30B-A3B have
-now been attempted on the M1 Max. Laguna stalls in step 2 and leaves a
-non-compiling crate after 13m03s; Nemotron passes native tool use but fails all
-three structured-plan attempts. Neither is in the successful ranking.
-Qwen3.8-27B remains queued. See the
-[evaluation plan and failure records](docs/plan-august-2026-models.md).
+**August 2026 candidates:** Laguna S 2.1, Nemotron 3.5 Lightning 30B-A3B, and
+Qwen3.5-27B have now been attempted on the M1 Max. Laguna stalls in step 2 and
+leaves a non-compiling crate after 13m03s; Nemotron passes native tool use but
+fails all three structured-plan attempts. Qwen3.5 produces a correct 2/2-test
+crate, but takes **2h24m21s** through the loop. See the
+[evaluation plan and result records](docs/plan-august-2026-models.md).
 
 ### Every measured loop run — slowest → fastest
 
@@ -59,6 +59,7 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 
 | Model | Box (VRAM tier) | Placement | **Loop wall-clock** |
 |-------|-----------------|-----------|--------------------:|
+| Qwen3.5-27B Q4_K_M | M1 Max · 64 GB | whole | **2h24m21s** 🐌 |
 | Qwen3.6-27B (dense) | 5060 Ti · 16 GB | offload | ~75 min 🐌 |
 | Qwopus3.6-27B-Coder (dense) + MTP | M1 Max · 64 GB | whole + MTP | 19m43s |
 | Qwen3.6-35B-A3B (no MTP) | **3060 · 12 GB** | `--n-cpu-moe` | 13m40s |
