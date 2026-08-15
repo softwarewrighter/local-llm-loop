@@ -44,6 +44,13 @@ faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
 [5060](docs/nvidia-5060-poc-summary.md) · [3090](docs/nvidia-3090-poc-summary.md) ·
 [3060 (measured)](docs/nvidia-3060-12-results.md) · [M1 Max](docs/mac-poc-summary.md).
 
+**August 2026 candidates:** Laguna S 2.1 and Nemotron 3.5 Lightning 30B-A3B have
+now been attempted on the M1 Max. Laguna stalls in step 2 and leaves a
+non-compiling crate after 13m03s; Nemotron passes native tool use but fails all
+three structured-plan attempts. Neither is in the successful ranking.
+Qwen3.8-27B remains queued. See the
+[evaluation plan and failure records](docs/plan-august-2026-models.md).
+
 ### Every measured loop run — slowest → fastest
 
 All boxes, all models that produced a `cargo test`-green crate, by measured loop

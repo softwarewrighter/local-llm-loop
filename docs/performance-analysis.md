@@ -354,6 +354,56 @@ gate 1; loop completes; `cargo test` **2/2**.
 > won't beat the A3B MoE coders on the 3090 (Qwen3-Coder-30B ≈ 3m30s whole-resident);
 > the 3090 makes Qwopus *practical*, not *fastest*.
 
+### Laguna S 2.1 IQ3_XXS on the M1 Max -- measured failure (2026-08-15)
+
+Laguna S 2.1 (118B-A8B MoE) was tested with the cached 41.24 GiB
+`unsloth/Laguna-S-2.1-GGUF` `UD-IQ3_XXS` file. It used Poolside's `laguna`
+llama.cpp branch (`04b2b72cb`, build 10008), full Metal offload, one 16k slot,
+Jinja, and no speculative decoding. The model loaded in 42 s.
+
+| Metric / gate | Measured result |
+|---------------|-----------------|
+| Native tool call | ✅ exact file-write smoke test |
+| Structured plan | ✅ first try; valid six-step `emit` envelope |
+| Step 1 + review | ✅ first try; valid result + Continue review |
+| Decode | ~27-29 t/s during long generations |
+| Large-prompt prefill | ~230-260 t/s |
+| Full loop | ❌ stopped at **13m02.6s**, still in step 2/6 |
+| Independent build | ❌ `E0599` from generated clap parser; no tests present |
+
+The failure was agent efficiency and correctness, not model loading or tool-call
+parsing. Step 2 wrote a plausible `src/main.rs`, then entered repeated long tool
+turns, filled the 16k context once, and stopped changing files. The generated
+`clap::value_parser!(usize).range(1..)` did not compile, and the model never ran
+a successful build to catch it. This result is deliberately excluded from the
+successful wall-clock table. Full trace and artifact details are in the
+[August 2026 evaluation plan](plan-august-2026-models.md).
+
+### Nemotron 3.5 Lightning 30B-A3B Q4_0 on the M1 Max -- planner gate failure (2026-08-15)
+
+The official ggml-org Q4_0 is the requested Mamba-heavy architecture: 23 Mamba,
+23 MoE, and 6 attention blocks. Its 17.60 GiB base-model file loaded with full
+Metal offload at 32k context in about 9.2 s; the separate MTP file was not loaded.
+
+| Metric / gate | Measured result |
+|---------------|-----------------|
+| Native tool call | ✅ exact file-write smoke test |
+| Decode | ~56-62 t/s |
+| Large-prompt prefill | ~650-675 t/s |
+| Structured plan | ❌ three attempts; no valid `emit` envelope |
+| Planner wall-clock | **1m30.43s** to terminal failure |
+| Full loop / build | not reached |
+
+Each plan attempt chose an unnecessary filesystem listing: one used `/*`, and
+two malformed the external workspace path. OpenCode rejected those calls, after
+which the planner exhausted its retries without producing JSON. This is a
+planning/protocol failure, not a fit, loading, or native-tool-use failure.
+
+A BF16-derived Unsloth `UD-Q4_K_XL` was additionally rejected by two llama.cpp
+builds (`expected 417 tensors, got 408`). The working official distribution
+avoids that packaging mismatch by separating the base target and MTP weights.
+Full details are in the [August 2026 evaluation plan](plan-august-2026-models.md).
+
 ## The two regimes
 
 Single-stream LLM inference has two distinct performance regimes, and they favor

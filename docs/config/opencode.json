@@ -167,6 +167,32 @@
             "output": 4096
           },
           "options": {}
+        },
+        "laguna-s-2.1": {
+          "name": "Laguna S 2.1 UD-IQ3_XXS (M1 Max; measured loop failure)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 16384,
+            "output": 4096
+          },
+          "options": {}
+        },
+        "nemotron-lightning": {
+          "name": "NVIDIA Nemotron 3.5 Lightning 30B-A3B Q4_0 (M1 Max; planner gate failure)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
         }
       }
     },
