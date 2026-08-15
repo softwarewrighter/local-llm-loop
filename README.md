@@ -44,12 +44,16 @@ faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
 [5060](docs/nvidia-5060-poc-summary.md) · [3090](docs/nvidia-3090-poc-summary.md) ·
 [3060 (measured)](docs/nvidia-3060-12-results.md) · [M1 Max](docs/mac-poc-summary.md).
 
-**August 2026 candidates:** Laguna S 2.1, Nemotron 3.5 Lightning 30B-A3B, and
-Qwen3.5-27B have now been attempted on the M1 Max. Laguna stalls in step 2 and
-leaves a non-compiling crate after 13m03s; Nemotron passes native tool use but
-fails all three structured-plan attempts. Qwen3.5 produces a correct 2/2-test
-crate, but takes **2h24m21s** through the loop. See the
-[evaluation plan and result records](docs/plan-august-2026-models.md).
+**August 2026 M1 Max evaluations:** all three candidates have now been attempted.
+
+| Model | Configuration | Outcome |
+|-------|---------------|---------|
+| Laguna S 2.1 | 118B-A8B `UD-IQ3_XXS`, 16k | Tool and plan gates pass; stalls in step 2 and leaves non-compiling code after **13m03s** |
+| Nemotron 3.5 Lightning 30B-A3B | Mamba-heavy official `Q4_0`, 32k | Native tools pass; structured planner fails **3/3** attempts |
+| Qwen3.5-27B | Dense hybrid `Q4_K_M`, 32k | Full loop and **2/2 tests pass**, but wall-clock is **2h24m21s** |
+
+Only Qwen qualifies for the successful-loop ranking below. See the
+[evaluation plan and complete result records](docs/plan-august-2026-models.md).
 
 ### Every measured loop run — slowest → fastest
 
