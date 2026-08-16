@@ -5,7 +5,7 @@ agentic-coding evaluation. The primary target is the **M1 Max with 64 GB unified
 memory**. At least one candidate will later be repeated on the **RTX 3090 with
 24 GB VRAM**; no new result is claimed until a complete harness run finishes.
 
-- **Status date:** 2026-08-15
+- **Status date:** 2026-08-16
 - **Workload:** `examples/spec-greeter.txt`, using the same plan -> execute ->
   review loop as the existing result tables
 - **Success:** native tool calls, valid JSON envelopes (including recorded
@@ -20,6 +20,20 @@ memory**. At least one candidate will later be repeated on the **RTX 3090 with
 | **Laguna S 2.1** | 118B total / 8B active MoE | **Measured failure:** tool gate and plan pass; full loop stopped after 13m03s in step 2 with no progress and non-compiling code | Fits at 16k; ~28 t/s decode, but this quant/run is not agent-efficient | Current 41 GB quant cannot fit wholly in VRAM; offload-only, low priority |
 | **NVIDIA Nemotron 3.5 Lightning 30B-A3B** | 30B total / 3B active hybrid MoE (23 Mamba, 6 attention, 23 MoE blocks) | **Measured gate failure:** official ggml-org Q4_0 loads and passes native tool use, but fails 3/3 plan attempts; an Unsloth GGUF was also rejected as malformed | Fits whole at 32k; ~56-62 t/s decode, but fails this harness's plan protocol | 18.90 GB target should fit with conservative context; loop quality is already disqualifying unless prompting changes |
 | **Qwen3.8-27B** | 27B dense hybrid | **Measured success:** Q4_K_M completes all five steps; 3/3 tests and clippy pass | Fits whole at 32k; ~8-12 t/s active decode; 2h43m57s wall includes sleep | 17.11 GB file and 20.5 GiB M1 RSS suggest a 3090 trial is plausible with conservative context |
+
+## Direct Qwen 27B version comparison
+
+| Version | Same-config speed | Planner / outcome | Interpretation |
+|---------|-------------------|-------------------|----------------|
+| **3.5** | 104.8 prefill / 12.1 decode t/s | Plan first try; full loop 2h24m21s; 2/2 tests | Correct but extremely verbose; originally run by mistake and retained as a baseline |
+| **3.6** | 100.8 prefill / 12.4 decode t/s | Plan fails 3/3 after 6,321 planner output tokens; 11m25s to failure | No useful token-efficiency win in this harness; never reaches code |
+| **3.8** | 114.1 prefill / 12.4 decode t/s | Recovers on plan attempt 2; full loop; 3/3 tests and clippy | Best agent quality; end-to-end time includes laptop sleep and is not a clean speed comparison |
+
+Raw generation speed is essentially equal across these three quants on the M1
+Max. The differentiator is trajectory quality: 3.8 recovers and validates its
+work, 3.5 finishes with excessive reasoning, and 3.6 repeatedly makes the same
+planner tool-policy error. The short 3.6 run is a terminal failure, not evidence
+that it completes the workload faster.
 
 The local cache says **Laguna S 2.1**, not “Laguna S 5.1.” Both the Hugging Face
 repository and downloaded filename identify version 2.1. Use that exact name in
@@ -148,6 +162,28 @@ calls. Dense 27B decode on Metal plus those trajectories made this tiny task
 slower than every previously successful loop in the README table. The final
 review used `Stop` because all work was complete, not because intervention was
 actually required.
+
+## Comparison attempt -- Qwen3.6-27B on M1 Max (2026-08-16)
+
+| Item | Result |
+|------|--------|
+| Model | `unsloth/Qwen3.6-27B-GGUF`, snapshot `82d411a`, `Q4_K_M` |
+| Weight file | 16,817,244,384 bytes (15.66 GiB); text-only, no vision projector |
+| Runtime | llama.cpp `04b2b72cb` / build 10008; OpenCode 1.17.18 |
+| Launch | full Metal, 32,768 context, one slot, q8_0 KV cache, flash attention, Jinja |
+| Gate 1 | **pass** -- exact native `write_file(path="hello.txt", content="hi")` call |
+| Gate speed | 100.8 t/s prefill; 12.4 t/s decode |
+| Plan / JSON | **fail** -- all three attempts tried to write an absolute external `plan.llm.json` path and did not recover after permission rejection |
+| Planner output tokens | **6,321 total** -- 1,513, 2,499, and 2,309 by attempt |
+| Wall-clock | **11m25.01s** (`real 685.01`) to terminal planner failure; no observed sleep gap |
+| Full loop / `cargo test` | not reached; no crate created |
+| Artifact directory | `/var/folders/wm/4h2wt33j4sv97l8098515h1h0000gn/T/bootstrap-greeter.XXXXXX.VbeG5dUTHi` |
+
+This is a measured negative result. It directly tests the suggestion that 3.6
+might be less verbose than 3.5, but 6,321 planner output tokens produced no
+valid plan. Its throughput matches 3.8 almost exactly; unlike 3.8, it did not
+adapt after the absolute-path tool rejection. A changed planner prompt or
+filesystem policy deserves separate labeling if tested later.
 
 ## Standard run record
 

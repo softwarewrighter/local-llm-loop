@@ -354,6 +354,29 @@ gate 1; loop completes; `cargo test` **2/2**.
 > won't beat the A3B MoE coders on the 3090 (Qwen3-Coder-30B ≈ 3m30s whole-resident);
 > the 3090 makes Qwopus *practical*, not *fastest*.
 
+### Qwen3.6-27B Q4_K_M on the M1 Max -- planner failure (2026-08-16)
+
+The exact text-only Unsloth Q4_K_M is 16,817,244,384 bytes (15.66 GiB) and ran
+at 32k context with full Metal offload, q8_0 KV, flash attention, and no vision
+projector. This was the same server and harness configuration used for the 3.5
+and 3.8 comparisons.
+
+| Metric / gate | Measured result |
+|---------------|-----------------|
+| Native tool call | ✅ exact `write_file(path="hello.txt", content="hi")` call |
+| Gate throughput | 100.8 t/s prefill; 12.4 t/s decode |
+| Structured plan | ❌ all three attempts used a rejected absolute external path |
+| Planner output | **6,321 tokens** total: 1,513 + 2,499 + 2,309 by attempt |
+| Wall-clock | **11m25.01s** to terminal planner failure; no sleep gap observed |
+| Full loop / build | not reached; no crate or tests produced |
+
+This run does not confirm the expectation that 3.6 would think less than 3.5.
+Although it stopped much sooner than either successful loop, that is because it
+failed at the planner gate. Its raw decode rate is indistinguishable from 3.5
+and 3.8 on this machine, while repeated unrecovered tool-policy mistakes made
+all generated planning tokens unproductive. Qwen3.8 encountered the same
+absolute-path rejection once, recovered on attempt 2, and completed correctly.
+
 ### Qwen3.8-27B Q4_K_M on the M1 Max -- correct, sleep-contaminated timing (2026-08-15)
 
 The exact requested text-only Q4_K_M is 15.93 GiB and ran at 32k context with

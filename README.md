@@ -52,9 +52,30 @@ faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
 | Nemotron 3.5 Lightning 30B-A3B | Mamba-heavy official `Q4_0`, 32k | Native tools pass; structured planner fails **3/3** attempts |
 | Qwen3.8-27B | Dense hybrid `Q4_K_M`, 32k | Full loop, clippy, and **3/3 tests pass**; **2h43m57s** wall-clock includes laptop sleep |
 
-Only Qwen qualifies for the successful-loop ranking below. An accidental
-Qwen3.5-27B run is retained as an explicitly off-target comparison. See the
-[evaluation plan and complete result records](docs/plan-august-2026-models.md).
+Only Qwen3.8 qualifies for the requested candidates' successful-loop ranking
+below. Qwen3.5-27B and Qwen3.6-27B runs are retained as direct version
+comparisons. See the [evaluation plan and complete result
+records](docs/plan-august-2026-models.md).
+
+### Qwen3.5 vs Qwen3.6 vs Qwen3.8 (27B, M1 Max)
+
+All three used text-only `Q4_K_M`, 32k context, full Metal offload, q8_0 KV,
+flash attention, and the same greeter harness. Their gate decode rates are
+effectively tied; agent behavior, not inference throughput, determines the
+outcome.
+
+| Model | Gate prefill / decode | Planner and loop | Quality / efficiency reading |
+|-------|----------------------:|------------------|------------------------------|
+| **Qwen3.5-27B** | 104.8 / 12.1 t/s | Plan first try; full loop **2h24m21s**; 2/2 tests | Correct, but extremely verbose with thousands of reasoning tokens in many phases |
+| **Qwen3.6-27B** | 100.8 / 12.4 t/s | Plan failed **3/3**; **6,321 planner output tokens**; terminal after **11m25s** | Did not recover from rejected absolute-path writes; no code or tests produced |
+| **Qwen3.8-27B** | 114.1 / 12.4 t/s | Plan attempt 2; full loop **2h43m57s** †; 3/3 tests + clippy | Best result: recovered, implemented, found and fixed a runtime parser bug |
+
+The claim that 3.6 should use fewer tokens is **not supported by this run**:
+it generated 6,321 output tokens during planning alone and never produced a
+valid plan. Its 11-minute wall-clock is time to failure, not a completed-loop
+speedup. Qwen3.8 is the strongest agent here; Qwen3.5 also finishes but is highly
+token-inefficient. A prompt/tool-policy change could alter the 3.6 result, so
+this is a harness-specific measurement rather than a universal model ranking.
 
 ### Every measured loop run — slowest → fastest
 

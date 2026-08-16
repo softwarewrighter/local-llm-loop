@@ -219,6 +219,19 @@
             "output": 4096
           },
           "options": {}
+        },
+        "qwen3.6-27b-mac": {
+          "name": "Qwen3.6-27B Q4_K_M (M1 Max; planner gate failure)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
         }
       }
     },
