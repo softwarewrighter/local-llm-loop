@@ -354,7 +354,30 @@ gate 1; loop completes; `cargo test` **2/2**.
 > won't beat the A3B MoE coders on the 3090 (Qwen3-Coder-30B ≈ 3m30s whole-resident);
 > the 3090 makes Qwopus *practical*, not *fastest*.
 
-### Qwen3.5-27B Q4_K_M on the M1 Max -- correct but extremely slow (2026-08-15)
+### Qwen3.8-27B Q4_K_M on the M1 Max -- correct, sleep-contaminated timing (2026-08-15)
+
+The exact requested text-only Q4_K_M is 15.93 GiB and ran at 32k context with
+full Metal offload, q8_0 KV, flash attention, and no vision projector. Process
+RSS after the run was 20.5 GiB.
+
+| Metric / gate | Measured result |
+|---------------|-----------------|
+| Native tool call | ✅ exact `write_file` call |
+| Structured plan | ✅ attempt 2; attempt 1 used a rejected absolute path |
+| Step/review envelopes | ✅ all five first try |
+| Decode | 12.4 t/s at gate; roughly 8-12 t/s while actively generating in-loop |
+| Prefill | 114.1 t/s at gate |
+| Full loop | ✅ five executed steps; **2h43m57.45s**, including laptop sleep |
+| Independent validation | ✅ 3/3 tests, clippy, fmt, repeat and invalid-zero behavior |
+
+Code quality was excellent for the task. Qwen3.8 caught and repaired a clap
+parser type mismatch at runtime—the same class of defect Laguna left
+uncompiled—then reran its acceptance checks. It added a third zero-repeat unit
+test and finished with clean lint and formatting. At least two visible sleep
+gaps contaminate wall-clock and aggregate server timing, so this run establishes
+fit and quality but is not a clean throughput comparison.
+
+### Off-target Qwen3.5-27B Q4_K_M comparison -- correct but extremely slow (2026-08-15)
 
 The text-only 15.59 GiB Unsloth Q4_K_M was run at 32k context with full Metal
 offload, q8_0 KV, flash attention, and no vision projector. This 27B dense hybrid

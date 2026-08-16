@@ -50,9 +50,10 @@ faster on a bigger/faster box** (Qwen3-Coder: ~3m30s on the 3090 vs 6m38s on the
 |-------|---------------|---------|
 | Laguna S 2.1 | 118B-A8B `UD-IQ3_XXS`, 16k | Tool and plan gates pass; stalls in step 2 and leaves non-compiling code after **13m03s** |
 | Nemotron 3.5 Lightning 30B-A3B | Mamba-heavy official `Q4_0`, 32k | Native tools pass; structured planner fails **3/3** attempts |
-| Qwen3.5-27B | Dense hybrid `Q4_K_M`, 32k | Full loop and **2/2 tests pass**, but wall-clock is **2h24m21s** |
+| Qwen3.8-27B | Dense hybrid `Q4_K_M`, 32k | Full loop, clippy, and **3/3 tests pass**; **2h43m57s** wall-clock includes laptop sleep |
 
-Only Qwen qualifies for the successful-loop ranking below. See the
+Only Qwen qualifies for the successful-loop ranking below. An accidental
+Qwen3.5-27B run is retained as an explicitly off-target comparison. See the
 [evaluation plan and complete result records](docs/plan-august-2026-models.md).
 
 ### Every measured loop run — slowest → fastest
@@ -63,6 +64,7 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 
 | Model | Box (VRAM tier) | Placement | **Loop wall-clock** |
 |-------|-----------------|-----------|--------------------:|
+| Qwen3.8-27B Q4_K_M | M1 Max · 64 GB | whole | **2h43m57s** 🐌 † |
 | Qwen3.5-27B Q4_K_M | M1 Max · 64 GB | whole | **2h24m21s** 🐌 |
 | Qwen3.6-27B (dense) | 5060 Ti · 16 GB | offload | ~75 min 🐌 |
 | Qwopus3.6-27B-Coder (dense) + MTP | M1 Max · 64 GB | whole + MTP | 19m43s |
@@ -80,6 +82,9 @@ wall-clock. Reads top-down **slow → fast**; the **box** column is the HW tier
 | Qwen3-Coder-30B-A3B | 3090 · 24 GB | whole | ~3m30s |
 | **Ornith-1.0-9B + MTP** | 5060 Ti · 16 GB | resident + MTP | **2m15s** |
 | **gpt-oss-20b** MXFP4 | 5060 Ti · 16 GB | whole (FP4) | **1m13s** 🥇 |
+
+† Qwen3.8 wall-clock includes at least two observed laptop-sleep gaps and is
+not a clean throughput comparison. The completed code-quality result is valid.
 
 Two things the table makes plain: a **fast small model can beat a slow big one across
 tiers** — Ornith-9B+MTP on the *lowest* box (4m29s) edges Ornith-9B on the 5060 and

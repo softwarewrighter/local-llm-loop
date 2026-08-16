@@ -206,6 +206,19 @@
             "output": 4096
           },
           "options": {}
+        },
+        "qwen3.8-27b": {
+          "name": "Qwen3.8-27B Q4_K_M (M1 Max; verified, 3/3 tests)",
+          "tools": true,
+          "cost": {
+            "input": 0,
+            "output": 0
+          },
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          },
+          "options": {}
         }
       }
     },
